@@ -286,7 +286,7 @@ export class BoardView extends ItemView {
         container.empty();
 
         // Toolbar
-        const toolbar = container.createDiv('story-line-toolbar');
+        const toolbar = container.createDiv('story-line-toolbar sl-two-row-toolbar');
         this.renderToolbar(toolbar);
 
         // Main content area (board + inspector)

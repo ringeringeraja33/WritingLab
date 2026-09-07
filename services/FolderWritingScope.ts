@@ -1,5 +1,5 @@
 import { WritingTracker, type WritingTrackerData } from './WritingTracker';
-import { countWordRevisionChurn, type WordcountPrepareOptions } from '../utils/wordcountText';
+import { countWordRevisionChurn, stripWordcountFrontmatter, type WordcountPrepareOptions } from '../utils/wordcountText';
 
 export interface FolderScopeConfig {
     id: string;
@@ -20,7 +20,7 @@ export function folderContainsMarkdown(root: string, path: string, recursive: bo
 }
 
 export function folderWritingBody(text: string): string {
-    return text.replace(/^\uFEFF/, '').replace(/^---\s*\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/, '');
+    return stripWordcountFrontmatter(text);
 }
 
 /** Same metrics as a project, but an independent ledger and file baseline. */
@@ -43,7 +43,7 @@ export class FolderWritingScope {
         if (text === previous) return;
         // Auto detection in the shared locale helper needs a long sample.
         // Short Chinese drafts must use the same tokenizer as longer ones.
-        const locale = this.config.locale === 'auto' && /[\u3400-\u9fff]/.test(text) ? 'zh' : this.config.locale;
+        const locale = this.config.locale;
         const count = countWordRevisionChurn('', text, locale, this.options);
         const delta = count - (this.counts.get(path) ?? 0);
         this.totalWords += delta;

@@ -9,8 +9,8 @@ const [mainTs, sceneManagerTs] = await Promise.all([
 
 test('folder and manifest deletion invalidate the project before ordinary refresh handlers', () => {
     const deleteWatcher = mainTs.slice(
-        mainTs.indexOf("this.app.vault.on('delete'"),
-        mainTs.indexOf("this.app.vault.on('rename'"),
+        mainTs.indexOf("this.app.vault.on('delete', (file)"),
+        mainTs.indexOf("this.app.vault.on('rename', (file, oldPath)"),
     );
     assert.match(deleteWatcher, /handleProjectTreeDelete\(file\.path, true\)/);
     assert.match(deleteWatcher, /handleProjectTreeDelete\(file\.path, false\)/);
@@ -31,6 +31,8 @@ test('external project deletion clears active state and tombstones its whole roo
     assert.match(handler, /this\._activeProject = null/);
     assert.match(handler, /this\.plugin\.settings\.activeProjectFile = ''/);
     assert.match(handler, /this\.scenes\.clear\(\)/);
+    assert.match(handler, /this\.clearProjectScopedSettings\(projectFile\)/);
+    assert.match(mainTs, /Project-keyed UI, graph and canvas settings are cleared/);
 });
 
 test('late System and datasheet saves verify the original project manifest', () => {
@@ -84,6 +86,8 @@ test('deleteProject tombstones the root before any await and lifts it if trash f
     );
     assert.match(fn, /deletedProjectRoots\.add\(baseFolder\)/);
     assert.match(fn, /deletedProjectRoots\.delete\(baseFolder\)/);
+    assert.match(fn, /this\.clearProjectScopedSettings\(filePath\)/);
+    assert.match(fn, /await this\.plugin\.saveData\(this\.plugin\.settings\)/);
     assert.ok(
         fn.indexOf('deletedProjectRoots.add(baseFolder)')
             < fn.indexOf('await this.plugin.seriesManager.loadSeriesMetadata'),

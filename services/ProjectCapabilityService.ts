@@ -22,13 +22,17 @@ export class ProjectCapabilityService {
 
     async apply(project: StoryLineProject, capabilities: ProjectCapabilities): Promise<void> {
         const previous = project.capabilities;
+        const previousLibraryFolders = project.libraryFolders
+            ? { ...project.libraryFolders }
+            : undefined;
         const next = normalizeProjectCapabilities(capabilities);
-        await this.sceneManager.ensureProjectModuleStorage(project, next);
-        project.capabilities = next;
         try {
+            await this.sceneManager.ensureProjectModuleStorage(project, next);
+            project.capabilities = next;
             await this.sceneManager.saveProjectFrontmatter(project);
         } catch (error) {
             project.capabilities = previous;
+            project.libraryFolders = previousLibraryFolders;
             throw error;
         }
     }

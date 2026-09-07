@@ -3,10 +3,12 @@
  * Library categories ↔ vault folders.
  *
  * Strict rules (every project):
- * 1. Source of truth for folders = direct subfolders of Library/ (plus fixed
- *    Characters / Locations / Uncategorized). Tab visibility is the user's
- *    enabled/hidden list — hiding a category keeps its folder. Automatic
- *    reconcile must adopt unknown folders, never trash ones that still have notes.
+ * 1. Source of truth for folders = direct subfolders of Library/. The project's
+ *    `libraryPack` decides which preset hubs exist: narrative creates
+ *    Characters / Locations / worldbuilding; academic creates Literature /
+ *    Claims / Arguments / Facts; `both` creates both; `none` creates none.
+ *    Tab visibility is the user's enabled/hidden list — hiding a category that
+ *    belongs to the pack keeps its folder. Off-pack preset folders are not created.
  * 2. Uncategorized = notes at Library root only — never notes inside a
  *    category subfolder (Creatures, Skills, …).
  * 3. Deleting a category removes its Library folder(s) and Library Base view,
@@ -16,11 +18,18 @@
  *    only the folder basename / tab label does.
  */
 import { Notice, TFile, TFolder, normalizePath } from 'obsidian';
-import { BUILTIN_CODEX_CATEGORIES, ACADEMIC_CODEX_CATEGORIES, PRESET_CODEX_CATEGORIES, UNCATEGORIZED_CATEGORY_ID } from '../models/Codex';
+import { BUILTIN_CODEX_CATEGORIES, ACADEMIC_CODEX_CATEGORIES, PRESET_CODEX_CATEGORIES, UNCATEGORIZED_CATEGORY_ID, isAcademicLibraryCategoryId, isNarrativeLibraryCategoryId, shouldCreateLibraryCategoryFolder } from '../models/Codex';
 import type { StoryLineProject } from '../models/StoryLineProject';
 import { DEFAULT_PROJECT_LIBRARY_FOLDERS, DEFAULT_PROJECT_LIBRARY_HIDDEN_CATEGORIES } from '../models/StoryLineProject';
 import type SceneCardsPlugin from '../main';
-import { libraryCategoryPack, moduleEnabled, type ProjectCapabilities } from '../models/ProjectCapabilities';
+import {
+    libraryCategoryPack,
+    moduleEnabled,
+    usesAcademicLibraryCategories,
+    usesNarrativeLibraryCategories,
+    type LibraryCategoryPackId,
+    type ProjectCapabilities,
+} from '../models/ProjectCapabilities';
 import { localizeForLanguage, t } from '../utils/i18n';
 import {
     allocateLibraryCategoryId,
@@ -60,8 +69,10 @@ const BUILTIN_LIBRARY_ICONS: Record<string, string> = {
 /** Version 2 seeds academic Library packs for research projects. */
 export const STORYLINE_PRESET_SEED_VERSION = 2;
 
-export function libraryPresetCategoriesForPack(pack: 'narrative' | 'academic') {
-    return pack === 'academic' ? ACADEMIC_CODEX_CATEGORIES : BUILTIN_CODEX_CATEGORIES;
+export function libraryPresetCategoriesForPack(pack: LibraryCategoryPackId) {
+    const academic = usesAcademicLibraryCategories(pack) ? ACADEMIC_CODEX_CATEGORIES : [];
+    const narrative = usesNarrativeLibraryCategories(pack) ? BUILTIN_CODEX_CATEGORIES : [];
+    return [...academic, ...narrative];
 }
 
 function presetCategoryRecord(preset: { id: string; label: string; icon: string }) {
@@ -106,10 +117,11 @@ export function initialLibraryCategorySettings(capabilities: ProjectCapabilities
     const pack = libraryCategoryPack(capabilities);
     const presets = libraryPresetCategoriesForPack(pack);
     const ids = presets.map(preset => preset.id);
+    const narrativeHubs = usesNarrativeLibraryCategories(pack);
     return {
         enabledCategories: [...ids],
         customCategories: presets.map(presetCategoryRecord),
-        categoryOrder: pack === 'academic' ? [...ids] : ['characters', 'locations', ...ids],
+        categoryOrder: narrativeHubs ? ['characters', 'locations', ...ids] : [...ids],
         hiddenFixedCategories: pack === 'academic'
             ? ['uncategorized', 'characters', 'locations']
             : [...DEFAULT_PROJECT_LIBRARY_HIDDEN_CATEGORIES],
@@ -118,33 +130,79 @@ export function initialLibraryCategorySettings(capabilities: ProjectCapabilities
     };
 }
 
-/** Vault subfolders to create for a project's Library pack. Skips Characters / Locations when those modules are off. */
+/** Vault subfolders to create for a project's Library pack. */
 export function defaultLibraryFoldersForCapabilities(capabilities: ProjectCapabilities | undefined): Record<string, string> {
     const folders: Record<string, string> = {};
-    if (moduleEnabled(capabilities, 'characters')) {
+    if (!moduleEnabled(capabilities, 'library')) return folders;
+    const pack = libraryCategoryPack(capabilities);
+    if (usesNarrativeLibraryCategories(pack)) {
         folders.characters = DEFAULT_PROJECT_LIBRARY_FOLDERS.characters;
-    }
-    if (moduleEnabled(capabilities, 'locations')) {
         folders.locations = DEFAULT_PROJECT_LIBRARY_FOLDERS.locations;
     }
-    if (moduleEnabled(capabilities, 'library')) {
-        for (const preset of libraryPresetCategoriesForPack(libraryCategoryPack(capabilities))) {
-            folders[preset.id] = preset.folder;
-        }
+    for (const preset of libraryPresetCategoriesForPack(pack)) {
+        folders[preset.id] = preset.folder;
     }
     return folders;
 }
 
-/** Add missing pack members. Does not re-enable a category the user hid or deleted. */
-export function ensureLibraryPackCategories(plugin: SceneCardsPlugin, pack?: 'narrative' | 'academic'): boolean {
-    const resolved = pack ?? libraryCategoryPack(plugin.sceneManager?.activeProject?.capabilities);
+/** Drop opposite-pack preset mappings so academic Libraries cannot recreate Characters/. */
+export function filterLibraryFoldersForPack(
+    folders: Record<string, string> | undefined,
+    pack: LibraryCategoryPackId,
+): Record<string, string> {
+    const next: Record<string, string> = {};
+    for (const [id, name] of Object.entries(folders || {})) {
+        if (!name?.trim()) continue;
+        if (!shouldCreateLibraryCategoryFolder(id, pack)) continue;
+        next[id] = name;
+    }
+    return next;
+}
+
+/** Add missing pack members and strip the opposite pack's presets. Does not re-enable a category the user hid or deleted. */
+export function ensureLibraryPackCategories(plugin: SceneCardsPlugin, pack?: LibraryCategoryPackId): boolean {
+    const capabilities = plugin.sceneManager?.activeProject?.capabilities;
+    const resolved = pack ?? libraryCategoryPack(capabilities);
     const before = JSON.stringify(readLibraryCategorySettings(plugin.settings));
     const registered = new Set((plugin.settings.codexCustomCategories || []).map(category => category.id));
     for (const preset of libraryPresetCategoriesForPack(resolved)) {
         if (registered.has(preset.id)) continue;
         registerPresetCategory(plugin, preset, { enable: true });
     }
-    return JSON.stringify(readLibraryCategorySettings(plugin.settings)) !== before;
+
+    const stripPreset = (id: string): boolean =>
+        (isAcademicLibraryCategoryId(id) || isNarrativeLibraryCategoryId(id))
+        && !shouldCreateLibraryCategoryFolder(id, resolved);
+
+    plugin.settings.codexEnabledCategories =
+        (plugin.settings.codexEnabledCategories || []).filter(id => !stripPreset(id));
+    plugin.settings.libraryCategoryOrder =
+        (plugin.settings.libraryCategoryOrder || []).filter(id => !stripPreset(id));
+    plugin.settings.codexCustomCategories =
+        (plugin.settings.codexCustomCategories || []).filter(category => !stripPreset(category.id));
+
+    const hidden = new Set(plugin.settings.libraryHiddenFixedCategories || []);
+    if (usesNarrativeLibraryCategories(resolved)) {
+        hidden.delete('characters');
+        hidden.delete('locations');
+    } else {
+        hidden.add('characters');
+        hidden.add('locations');
+        if (resolved === 'academic') hidden.add('uncategorized');
+    }
+    plugin.settings.libraryHiddenFixedCategories = Array.from(hidden);
+
+    const project = plugin.sceneManager?.activeProject;
+    let foldersChanged = false;
+    if (project?.libraryFolders) {
+        const filtered = filterLibraryFoldersForPack(project.libraryFolders, resolved);
+        if (JSON.stringify(filtered) !== JSON.stringify(project.libraryFolders)) {
+            project.libraryFolders = filtered;
+            foldersChanged = true;
+        }
+    }
+
+    return JSON.stringify(readLibraryCategorySettings(plugin.settings)) !== before || foldersChanged;
 }
 
 /**
@@ -174,6 +232,10 @@ export function seedStorylinePresetCategories(plugin: SceneCardsPlugin): boolean
         hidden.add('characters');
         hidden.add('locations');
         plugin.settings.libraryHiddenFixedCategories = Array.from(hidden);
+    } else if (pack === 'both' || pack === 'narrative') {
+        plugin.settings.libraryHiddenFixedCategories =
+            (plugin.settings.libraryHiddenFixedCategories || []).filter(id =>
+                id !== 'characters' && id !== 'locations');
     }
     plugin.settings.codexPresetSeedVersion = STORYLINE_PRESET_SEED_VERSION;
     return true;
@@ -377,14 +439,17 @@ export async function ensureSeededLibraryCategoryLabels(plugin: SceneCardsPlugin
     const registered = new Set(plugin.settings.codexCustomCategories.map(category => category.id));
 
     const hiddenFixed = new Set(plugin.settings.libraryHiddenFixedCategories || []);
+    const pack = libraryCategoryPack(project?.capabilities);
     const ids = [
         ...(['characters', 'locations'] as const).filter(id =>
-            !hiddenFixed.has(id)
-            || enabled.has(id)
-            || registered.has(id)
-            || !!project?.libraryFolders?.[id]),
+            shouldCreateLibraryCategoryFolder(id, pack)
+            && (!hiddenFixed.has(id)
+                || enabled.has(id)
+                || registered.has(id)
+                || !!project?.libraryFolders?.[id])),
         ...PRESET_CODEX_CATEGORIES.map(c => c.id).filter(id =>
-            !deleted.has(id)
+            shouldCreateLibraryCategoryFolder(id, pack)
+            && !deleted.has(id)
             && (enabled.has(id) || registered.has(id) || !!project?.libraryFolders?.[id])),
     ];
 
@@ -461,16 +526,26 @@ export function applyCategoryFolderLabels(plugin: SceneCardsPlugin): void {
  * does not create a folder.
  */
 export function getManagedLibraryCategoryIds(plugin: SceneCardsPlugin): string[] {
+    const pack = libraryCategoryPack(plugin.sceneManager.activeProject?.capabilities);
     const hiddenFixed = new Set(plugin.settings.libraryHiddenFixedCategories || []);
     const ids = new Set<string>(
-        (['characters', 'locations'] as const).filter(id => !hiddenFixed.has(id)),
+        (['characters', 'locations'] as const).filter(id =>
+            shouldCreateLibraryCategoryFolder(id, pack) && !hiddenFixed.has(id)),
     );
     for (const custom of plugin.settings.codexCustomCategories || []) {
         if (!custom.id || custom.id === UNCATEGORIZED_CATEGORY_ID) continue;
+        if (!shouldCreateLibraryCategoryFolder(custom.id, pack)
+            && (isAcademicLibraryCategoryId(custom.id) || isNarrativeLibraryCategoryId(custom.id))) {
+            continue;
+        }
         ids.add(custom.id);
     }
     for (const id of plugin.settings.codexEnabledCategories || []) {
         if (!id || id === UNCATEGORIZED_CATEGORY_ID) continue;
+        if (!shouldCreateLibraryCategoryFolder(id, pack)
+            && (isAcademicLibraryCategoryId(id) || isNarrativeLibraryCategoryId(id))) {
+            continue;
+        }
         ids.add(id);
     }
     return [...ids];
@@ -627,6 +702,7 @@ async function restoreCanonicalSeedFolders(
     for (const root of libraryRootsForProject(plugin, project)) {
         if (!await plugin.app.vault.adapter.exists(root)) continue;
         for (const [id, canonical] of Object.entries(DEFAULT_LIBRARY_FOLDER_NAMES)) {
+            if (!shouldCreateLibraryCategoryFolder(id, libraryCategoryPack(project.capabilities))) continue;
             const listing = await plugin.app.vault.adapter.list(root);
             const alias = listing.folders
                 .map(path => basenameOfPath(path))
@@ -791,10 +867,14 @@ export async function ensureLibraryCategoryFolders(plugin: SceneCardsPlugin): Pr
         }
     }
 
+    const pack = libraryCategoryPack(project.capabilities);
     const hiddenFixed = new Set(plugin.settings.libraryHiddenFixedCategories || []);
     const ids = new Set<string>([
-        ...(['characters', 'locations'] as const).filter(id => !hiddenFixed.has(id)),
-        ...(plugin.settings.codexEnabledCategories || []),
+        ...(['characters', 'locations'] as const).filter(id =>
+            shouldCreateLibraryCategoryFolder(id, pack) && !hiddenFixed.has(id)),
+        ...(plugin.settings.codexEnabledCategories || []).filter(id =>
+            shouldCreateLibraryCategoryFolder(id, pack)
+            || (!isAcademicLibraryCategoryId(id) && !isNarrativeLibraryCategoryId(id))),
     ]);
     // Prefer the series Library when present — that's where shared categories live.
     const primaryLib = normalizePath(plugin.sceneManager.getCodexFolder() || project.codexFolder);
@@ -867,6 +947,17 @@ export async function syncLibraryFoldersWithCategories(
                 if (isLeftoverSeedLibraryFolder(plugin, project, child.name)
                     && isLibraryCategoryFolderEmpty(child)) {
                     await disposeLibrarySubfolder(plugin, libraryRoot, child.name, 'trash');
+                    changed = true;
+                    continue;
+                }
+                const pack = libraryCategoryPack(project.capabilities);
+                const offPack = Object.entries(DEFAULT_LIBRARY_FOLDER_NAMES).find(([id, english]) =>
+                    !shouldCreateLibraryCategoryFolder(id, pack)
+                    && (libraryFolderNamesMatch(english, child.name)
+                        || isSingularPluralFolderAlias(child.name, english)));
+                if (offPack && isLibraryCategoryFolderEmpty(child)) {
+                    await disposeLibrarySubfolder(plugin, libraryRoot, child.name, 'trash');
+                    if (project.libraryFolders) delete project.libraryFolders[offPack[0]];
                     changed = true;
                 }
             }
@@ -1457,8 +1548,10 @@ export async function adoptLibraryCategoriesFromFolders(
     // Localized seed names are unambiguous; arbitrary unknown folders remain
     // custom categories because their intended fixed-category target is unknowable.
     let diskSnapshot = await readLibraryFolderNames(plugin, project);
+    const pack = libraryCategoryPack(project.capabilities);
     if (diskSnapshot.scannedRoots > 0) {
         for (const id of FIXED_LIBRARY_FOLDER_IDS) {
+            if (!shouldCreateLibraryCategoryFolder(id, pack)) continue;
             const current = resolveLibraryFolderName(plugin, id, project);
             if (diskSnapshot.names.has(current)) continue;
             const defaultName = DEFAULT_LIBRARY_FOLDER_NAMES[id];
@@ -1568,6 +1661,7 @@ export async function adoptLibraryCategoriesFromFolders(
             let folderName = basenameOfPath(folderPath);
             let resolved = resolveCategoryIdForLibraryFolder(plugin, project, folderName);
             if (!resolved) continue;
+            if (resolved.builtin && !shouldCreateLibraryCategoryFolder(resolved.id, pack)) continue;
             const canonical = DEFAULT_LIBRARY_FOLDER_NAMES[resolved.id];
             if (canonical && isSingularPluralFolderAlias(folderName, canonical)) {
                 folderName = canonical;

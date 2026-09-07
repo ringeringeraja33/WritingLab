@@ -109,7 +109,7 @@ export class WritingTrackerPanel extends ItemView {
         container.empty();
 
         const tabs = container.createDiv('nl-tracker-tabs');
-        this.addScopeTab(tabs, 'global', t('Vault'));
+        this.addScopeTab(tabs, 'global', t('All writing projects'));
         this.addScopeTab(tabs, 'project', t('Project'));
         this.addScopeTab(tabs, 'folder', t('Folder'));
 
@@ -187,6 +187,11 @@ export class WritingTrackerPanel extends ItemView {
         const tracker = this.sessionTracker();
         const section = parent.createDiv('nl-tracker-section');
         section.createEl('h4', { text: t('Writing Sprint') });
+        if (this.trackerScope === 'global' && this.plugin.sceneManager.activeProject) {
+            section.createDiv({ cls: 'setting-item-description', text: t('Project: {title}', {
+                title: this.plugin.sceneManager.activeProject.title,
+            }) });
+        }
 
         const controls = section.createDiv('nl-tracker-sprint');
         const durationRow = controls.createDiv('nl-tracker-duration-row');
@@ -292,7 +297,7 @@ export class WritingTrackerPanel extends ItemView {
         parent.createEl('h5', {
             cls: 'nl-tracker-subtitle',
             text: this.trackerScope === 'global'
-                ? t('Vault totals')
+                ? t('Cumulative writing')
                 : this.trackerScope === 'folder' ? t('Session (while folder files are open)') : t('Session (since project opened)'),
         });
         const row = parent.createDiv('nl-tracker-cards');

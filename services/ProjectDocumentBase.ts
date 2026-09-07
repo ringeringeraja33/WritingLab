@@ -4,7 +4,7 @@ import { deriveProjectFoldersFromFilePath } from '../models/StoryLineProject';
 import { t } from '../utils/i18n';
 
 const LEGACY_DOCUMENT_BASE_FILENAME = 'writing.base';
-const EXCLUDED_FOLDERS = ['System', 'Library', 'Canvas', 'Attachments', 'Research', 'Notes', 'Scenes'];
+const EXCLUDED_FOLDERS = ['System', 'Library', 'Canvas', 'Attachments', 'Research', 'Notes', 'Scenes', 'Theses'];
 
 function yamlString(value: string): string {
     return JSON.stringify(value);

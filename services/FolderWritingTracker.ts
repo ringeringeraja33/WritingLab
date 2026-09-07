@@ -1,7 +1,7 @@
 import { FileView, MarkdownView, TFile, TFolder, normalizePath } from 'obsidian';
 import type SceneCardsPlugin from '../main';
 import { FolderWritingScope, type FolderScopeConfig } from './FolderWritingScope';
-import { parseWritingTrackerFile } from '../utils/writingTrackerHeatmap';
+import { WritingTracker, type WritingTrackerData } from './WritingTracker';
 import { WRITING_TRACKER_PANEL_TYPE, WRITING_TRACKER_VIEW_TYPE } from '../constants';
 import { t } from '../utils/i18n';
 
@@ -127,12 +127,14 @@ export class FolderWritingTracker {
                     if (!tracker.history || typeof tracker.history !== 'object'
                         || Array.isArray(tracker.history)
                         || Object.values(tracker.history).some(value => typeof value !== 'number' || !Number.isFinite(value))) throw new Error('Invalid folder scope');
+                    const restored = new WritingTracker();
+                    restored.importData(entry.tracker as WritingTrackerData);
                     return {
                         id: entry.id,
                         path: entry.path,
                         recursive: entry.recursive,
                         locale: typeof entry.locale === 'string' && entry.locale ? entry.locale : 'auto',
-                        tracker: parseWritingTrackerFile(entry.tracker),
+                        tracker: restored.exportData(),
                         ...(typeof entry.totalWords === 'number' ? { totalWords: entry.totalWords } : {}),
                         ...(typeof entry.sprintInventoryTotal === 'number' ? { sprintInventoryTotal: entry.sprintInventoryTotal } : {}),
                     };
@@ -231,7 +233,10 @@ export class FolderWritingTracker {
             const raw = await this.plugin.app.vault.cachedRead(file);
             if (scope !== this.current || revision !== this.revision || file.path !== path
                 || this.plugin.app.vault.getAbstractFileByPath(path) !== file) return;
-            scope.setText(path, this.editorText(path) ?? raw, false);
+            const editor = this.editorText(path);
+            // A save can arrive before editor-change. Do not consume that edit as inventory.
+            scope.setText(path, editor ?? raw, this.ready && editor !== undefined);
+            if (this.ready) this.scheduleSave();
             this.notify();
         } catch (error) {
             // A failed read must never turn an existing file's count into zero.

@@ -160,7 +160,7 @@ test("project canvas tab opens the remembered canvas with a separate card manage
     readFile(new URL("../styles.css", import.meta.url), "utf8"),
   ]);
   assert.match(constants, /NCANVAS_LIBRARY_VIEW_TYPE\s*=\s*'narrative-lab-canvas-library'/);
-  assert.match(main, /registerView\(NCANVAS_LIBRARY_VIEW_TYPE/);
+  assert.match(main, /registerWritingLabView\(NCANVAS_LIBRARY_VIEW_TYPE/);
   assert.match(main, /openNCanvasLibraryForCanvasPath/);
   assert.match(switcher, /const projectFile = getLeafNarrativeLabProjectFile\(leaf\)/);
   assert.match(switcher, /openProjectCanvasTab\(projectFile, leaf\)/);

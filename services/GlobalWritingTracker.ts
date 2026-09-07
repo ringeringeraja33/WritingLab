@@ -38,6 +38,7 @@ export class GlobalWritingTracker {
     private unattributedHistory: Record<string, number> = {};
     private unattributedRevisionHistory: Record<string, number> = {};
     private mutatingLedger = false;
+    private ledgerRevision = 0;
 
     constructor(private plugin: SceneCardsPlugin) {}
 
@@ -91,6 +92,7 @@ export class GlobalWritingTracker {
     /** Rebuild vault totals from project ledgers and quarantine legacy-only dates. */
     async reconcileProjectLedgers(): Promise<boolean> {
         if (!this.loaded) return false;
+        const revision = this.ledgerRevision;
         const history: Record<string, number> = {};
         const revisionHistory: Record<string, number> = {};
         let found = false;
@@ -100,8 +102,10 @@ export class GlobalWritingTracker {
                 const base = deriveProjectFoldersFromFilePath(project.filePath).baseFolder;
                 const path = normalizePath(`${base}/System/stats.json`);
                 const adapter = this.plugin.app.vault.adapter;
-                if (!await adapter.exists(path)) continue;
-                const rawValue = JSON.parse(await adapter.read(path)) as unknown;
+                const active = normalizePath(this.plugin.sceneManager.activeProject?.filePath || '') === normalizePath(project.filePath);
+                const exists = await adapter.exists(path);
+                if (!exists && !active) continue;
+                const rawValue = exists ? JSON.parse(await adapter.read(path)) as unknown : {};
                 if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
                     throw new Error('invalid stats object');
                 }
@@ -112,11 +116,15 @@ export class GlobalWritingTracker {
                         || Array.isArray(raw.writingTrackerData))) {
                     throw new Error('invalid writing tracker data');
                 }
-                const parsed = parseWritingTrackerFile(
+                let parsed = parseWritingTrackerFile(
                     raw?.writingTrackerData && typeof raw.writingTrackerData === 'object'
                         ? raw.writingTrackerData
                         : {},
                 );
+                // Autosave is debounced: memory may be newer than the active project's disk ledger.
+                if (normalizePath(this.plugin.sceneManager.activeProject?.filePath || '') === normalizePath(project.filePath)) {
+                    parsed = parseWritingTrackerFile(this.plugin.writingTracker.exportData());
+                }
                 found = true;
                 for (const [date, words] of Object.entries(parsed.history)) {
                     history[date] = (history[date] || 0) + words;
@@ -131,6 +139,7 @@ export class GlobalWritingTracker {
         }
         // Never replace the current ledger with a partial project scan.
         if (!complete) return false;
+        if (revision !== this.ledgerRevision) return false;
         if (!found) return true;
         const existingHistory = this.tracker.getFullHistory();
         const existingRevisions = this.tracker.getFullRevisionHistory();
@@ -303,6 +312,7 @@ export class GlobalWritingTracker {
     }
 
     recordFlush(delta: { words: number; revisions: number }, now = Date.now()): void {
+        if (delta.words !== 0 || delta.revisions > 0) this.ledgerRevision++;
         if (delta.words !== 0) this.tracker.addTodayWords(delta.words, now);
         if (delta.revisions > 0) this.tracker.addTodayRevisions(delta.revisions, now);
         if (delta.words !== 0 || delta.revisions > 0) this.scheduleSave();

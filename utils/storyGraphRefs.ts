@@ -308,10 +308,20 @@ export async function rebaseStoryGraphRelationPaths(
 export async function syncStoryGraphRelationCategoryMetadata(
     plugin: SceneCardsPlugin,
     categories: Array<{ id: string; label: string; color?: string }>,
+    scopeRoots: readonly string[] = [],
 ): Promise<boolean> {
     const categoryById = new Map(categories.map(category => [category.id, category]));
+    const roots = scopeRoots
+        .map(root => normalizePath(root))
+        .filter(Boolean);
+    const inScope = (path: string): boolean => {
+        if (roots.length === 0) return true;
+        const normalized = normalizePath(path);
+        return roots.some(root => normalized === root || normalized.startsWith(`${root}/`));
+    };
     let changed = false;
     for (const file of plugin.app.vault.getMarkdownFiles()) {
+        if (!inScope(file.path)) continue;
         const frontmatter: Record<string, unknown> | undefined =
             plugin.app.metadataCache.getFileCache(file)?.frontmatter;
         const rawRefs: unknown = frontmatter?.[FM_KEY];
@@ -345,6 +355,7 @@ export async function syncStoryGraphRelationCategoryMetadata(
     for (const [key, raw] of Object.entries(bundles)) {
         const bundle = normalizeStoryGraphFocusBundle(raw);
         if (!bundle?.parentId?.startsWith('link:')) continue;
+        if (!inScope(bundle.leftPath) || !inScope(bundle.rightPath)) continue;
         const category = categoryById.get(bundle.parentId.slice('link:'.length));
         if (!category) continue;
         if (bundle.parentLabel === category.label && bundle.parentColor === category.color) continue;

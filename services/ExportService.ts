@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-misused-promises, @typescript-eslint/no-unnecessary-type-assertion, no-useless-escape -- Obsidian's API surface and several untyped third-party libraries force dynamic dispatch; floating promises are intentional in DOM/event handlers; matching enable at end of file */
-import { StoryLineProject } from '../models/StoryLineProject';
+import { StoryLineProject, projectRootFromSceneFolder } from '../models/StoryLineProject';
 import { SceneManager } from './SceneManager';
 import { compareActChapter, getActDisplayLabel } from '../utils/actChapter';
 import { CharacterManager } from './CharacterManager';
@@ -785,7 +785,7 @@ ${body}
         combined.set(bom, 0);
         combined.set(csvBytes, bom.length);
 
-        const projectFolder = project.sceneFolder.replace(/\/Scenes\/?$/, '');
+        const projectFolder = projectRootFromSceneFolder(project.sceneFolder);
         const exportFolder = `${projectFolder}/Exports`;
 
         // Ensure export folder exists (adapter level)
@@ -805,7 +805,7 @@ ${body}
         content: string,
     ): Promise<string> {
         // Write into the project's root folder (sibling of Scenes/)
-        const projectFolder = project.sceneFolder.replace(/\/Scenes\/?$/, '');
+        const projectFolder = projectRootFromSceneFolder(project.sceneFolder);
         const exportFolder = `${projectFolder}/Exports`;
 
         // Ensure folder exists
@@ -1041,7 +1041,7 @@ ${body}
         const arrayBuffer = await blob.arrayBuffer();
         const filename = `${project.title} - ${scope === 'manuscript' ? 'Manuscript' : 'Outline'} (${this.timestamp()}).docx`;
 
-        const projectFolder = project.sceneFolder.replace(/\/Scenes\/?$/, '');
+        const projectFolder = projectRootFromSceneFolder(project.sceneFolder);
         const exportFolder = `${projectFolder}/Exports`;
 
         if (!(await this.app.vault.adapter.exists(exportFolder))) {
@@ -1193,7 +1193,7 @@ ${body}
         // Save the PDF file
         const filename = `${project.title} - ${scope === 'manuscript' ? 'Manuscript' : 'Outline'} (${this.timestamp()}).pdf`;
 
-        const projectFolder = project.sceneFolder.replace(/\/Scenes\/?$/, '');
+        const projectFolder = projectRootFromSceneFolder(project.sceneFolder);
         const exportFolder = `${projectFolder}/Exports`;
 
         if (!(await this.app.vault.adapter.exists(exportFolder))) {

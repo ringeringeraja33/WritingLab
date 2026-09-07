@@ -145,3 +145,33 @@ test('academic library graphs hide character relations and seed cite/support/ref
     assert.match(modeBar, /storyGraphShowsCharacters\(plugin\)/);
     assert.doesNotMatch(modeBar, /void ensureSeededCharacterRelationTypes\(plugin, characters\);\s*const characterRelationTypes = mergeCharacterRelationTypes/);
 });
+
+test('academic library graphs drop narrative leftovers such as Skills', async () => {
+    const bundled = await build({
+        entryPoints: ['utils/storyGraphAcademicRelations.ts'],
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        write: false,
+    });
+    const {
+        isNarrativeStoryGraphLinkLeftover,
+        mergeAcademicStoryGraphLinkCategories,
+    } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+    assert.equal(isNarrativeStoryGraphLinkLeftover({ id: 'skills', label: 'Skills' }), true);
+    assert.equal(isNarrativeStoryGraphLinkLeftover({ id: 'jineng', label: '技能' }), false);
+    assert.equal(isNarrativeStoryGraphLinkLeftover({ id: 'methodology', label: 'Method' }), false);
+    const merged = mergeAcademicStoryGraphLinkCategories([
+        { id: 'skills', label: '技能', color: '#9C27B0', arrow: 'single' },
+        { id: 'cites', label: '引用', color: '#111111', arrow: 'single' },
+        { id: 'method', label: 'Method', color: '#00AA00', arrow: 'single' },
+        { id: 'custom-skill-method', label: '技能', color: '#006600', arrow: 'single' },
+    ]);
+    assert.deepEqual(
+        merged.map(category => category.id),
+        ['cites', 'supports', 'refutes', 'method', 'custom-skill-method'],
+    );
+    assert.equal(merged[0].label, '引用');
+    assert.equal(merged.some(category => category.id === 'skills'), false);
+    assert.equal(merged.find(category => category.id === 'custom-skill-method')?.label, '技能');
+});

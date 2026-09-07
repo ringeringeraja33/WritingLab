@@ -3,8 +3,9 @@ import type SceneCardsPlugin from '../main';
 import type { StoryLineProject } from '../models/StoryLineProject';
 import {
     PROJECT_PRESETS,
+    applyLibraryPackToModules,
     capabilitiesForPreset,
-    resolveModuleDependencies,
+    type LibraryCategoryPackId,
     type ProjectModuleId,
     type ProjectPresetId,
 } from '../models/ProjectCapabilities';
@@ -26,6 +27,7 @@ export class ProjectModulesModal extends Modal {
     private selected = new Set<ProjectModuleId>();
     private preset: ProjectPresetId;
     private wordCountProfile: import('../models/ProjectCapabilities').WordCountProfileId;
+    private libraryPack: LibraryCategoryPackId;
     private navigation: NonNullable<import('../models/ProjectCapabilities').ProjectCapabilities['navigation']>;
 
     constructor(app: App, private plugin: SceneCardsPlugin, private project: StoryLineProject) {
@@ -33,6 +35,7 @@ export class ProjectModulesModal extends Modal {
         const current = plugin.capabilityService.get(project);
         this.preset = current.preset;
         this.wordCountProfile = current.wordCountProfile;
+        this.libraryPack = current.libraryPack;
         this.selected = new Set(current.modules);
         this.navigation = current.navigation ?? { order: PROJECT_PAGES.map(page => page.module), hidden: [] };
     }
@@ -102,6 +105,7 @@ export class ProjectModulesModal extends Modal {
                 const capabilities = capabilitiesForPreset(this.preset);
                 this.selected = new Set(capabilities.modules);
                 this.wordCountProfile = capabilities.wordCountProfile;
+                this.libraryPack = capabilities.libraryPack;
                 this.render();
             });
         });
@@ -165,14 +169,16 @@ export class ProjectModulesModal extends Modal {
             }
         };
         renderLayout();
-        renderProjectModulePicker(panels.modules.createDiv('nl-project-module-choices'), this.selected, next => {
+        renderProjectModulePicker(panels.modules.createDiv('nl-project-module-choices'), this.selected, (next, libraryPack) => {
             this.selected = next;
+            this.libraryPack = libraryPack;
             this.preset = 'custom';
             presetSetting.settingEl.querySelector<HTMLSelectElement>('select')!.value = 'custom';
             renderLayout();
         }, {
             chapterTemplatesAvailable: this.plugin.capabilityService.isEnabled('chapterTemplates', this.project),
             openChapterTemplates: () => { void this.plugin.openChapterTemplates(this.project).catch(error => new Notice(String(error))); },
+            libraryPack: this.libraryPack,
         });
         const footer = this.contentEl.createDiv('nl-settings-footer');
         footer.createSpan({ cls: 'nl-settings-safety-note', text: t('Disabled modules keep their data.') });
@@ -180,10 +186,10 @@ export class ProjectModulesModal extends Modal {
         .addButton(button => button.setButtonText(t('Save')).setCta().onClick(async () => {
             button.setDisabled(true);
             try {
-                const modules = resolveModuleDependencies(this.selected);
+                const modules = applyLibraryPackToModules(this.selected, this.libraryPack);
                 const base = capabilitiesForPreset(this.preset);
                 await this.plugin.updateProjectModules(this.project, {
-                    ...base, preset: this.preset, modules, wordCountProfile: this.wordCountProfile, navigation: this.navigation,
+                    ...base, preset: this.preset, modules, wordCountProfile: this.wordCountProfile, libraryPack: this.libraryPack, navigation: this.navigation,
                 });
                 new Notice(t('Project modules updated. Disabled module data was kept.'));
                 this.close();

@@ -19,6 +19,17 @@ test('settings remember Library category and content tab', () => {
     assert.match(settings, /lastLibraryContentMode:\s*'profile'/);
     assert.match(settings, /lastLibraryCategoryId:\s*'characters'/);
     assert.match(settings, /libraryUiByProject:\s*\{\}/);
+    assert.match(settings, /storyGraphRelationCategoriesByProject/);
+    assert.match(modeBar, /One-time migration from the former global vocabulary/);
+    assert.match(modeBar, /\[key\]: resolved\.map/);
+});
+
+test('relation label synchronization is limited to the active project graph roots', async () => {
+    const refs = await readFile(new URL('../utils/storyGraphRefs.ts', import.meta.url), 'utf8');
+    assert.match(refs, /scopeRoots: readonly string\[\] = \[\]/);
+    assert.match(refs, /if \(!inScope\(file\.path\)\) continue/);
+    assert.match(refs, /!inScope\(bundle\.leftPath\) \|\| !inScope\(bundle\.rightPath\)/);
+    assert.match(modeBar, /projectNativeGraphFolders\(plugin, projectFile\)/);
 });
 
 test('settings remember Structure sub-tab', () => {
@@ -65,7 +76,7 @@ test('Uncategorized gallery matches Location Profiles chrome', () => {
 
 test('Codex profile mode and category restore from memory', () => {
     assert.match(codexView, /setLibraryContentMode\(this\.plugin, 'profile', this\.getBoundProjectFile\(\)\)/);
-    assert.match(codexView, /getLibraryContentMode\(this\.plugin, this\.getBoundProjectFile\(\)\) === 'profile'/);
+    assert.match(codexView, /this\.libraryOverviewMode\(\) === 'profile'/);
     assert.match(codexView, /getRememberedLibraryCategory/);
     assert.match(codexView, /rememberLibraryCategory\(this\.plugin, categoryId/);
 });

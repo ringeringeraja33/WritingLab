@@ -96,5 +96,5 @@ export const PROJECT_PAGES: readonly ProjectPage[] = [
     { module: 'plotList', type: STORYLINE_VIEW_TYPE, label: 'Plot list', icon: 'list' },
     { module: 'subwayMap', type: SUBWAY_VIEW_TYPE, label: 'Plot subway map', icon: 'route' },
     { module: 'library', type: CODEX_VIEW_TYPE, label: 'Library', icon: 'library-big' },
-    { module: 'canvas', type: NCANVAS_LIBRARY_VIEW_TYPE, label: 'Node-based presentation canvas', icon: 'monitor-play' },
+    { module: 'canvas', type: NCANVAS_LIBRARY_VIEW_TYPE, label: 'Presentation', icon: 'monitor-play' },
 ];

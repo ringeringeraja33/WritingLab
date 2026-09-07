@@ -3,8 +3,8 @@ import { hydrateUniversalFieldsFromTopLevel, mirrorUniversalFieldsToTopLevel } f
 import { App, TFile, parseYaml, stringifyYaml } from 'obsidian';
 import { coerceSceneLocations, Scene, SceneStatus, TIMELINE_MODES, TimelineMode } from '../models/Scene';
 import { coerceString } from '../utils/narrow';
-import { tokenizeWords, DEFAULT_STORYLINE_LOCALE, resolveLocale, type StoryLineLocale } from '../utils/locale';
-import { prepareTextForWordcount, wordcountOptionsForProfile } from '../utils/wordcountText';
+import { DEFAULT_STORYLINE_LOCALE, type StoryLineLocale } from '../utils/locale';
+import { prepareTextForWordcount, wordcountOptionsForProfile, wordcountTokens } from '../utils/wordcountText';
 
 /**
  * Issue #73 — frontmatter scene fields that point at other entities (scenes,
@@ -654,9 +654,7 @@ export class MetadataParser {
      * stripped first so the total follows readable prose.
      */
     private static countWords(text: string): number {
-        const cleaned = prepareTextForWordcount(text, currentWordcountPrepareOptions());
-        if (!cleaned) return 0;
-        return tokenizeWords(cleaned, resolveLocale(_wordcountLocale, cleaned, DEFAULT_STORYLINE_LOCALE)).length;
+        return wordcountTokens(text, _wordcountLocale, currentWordcountPrepareOptions()).length;
     }
 
     /**

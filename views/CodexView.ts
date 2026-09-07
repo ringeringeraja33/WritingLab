@@ -5,7 +5,7 @@ import type SceneCardsPlugin from '../main';
 import type { LibraryProfileEmbedOptions } from './CanvasLibraryProfileHost';
 import { SceneManager } from '../services/SceneManager';
 import { CodexManager } from '../services/CodexManager';
-import { CodexEntry, CodexCategoryDef, CodexFieldCategory, CodexFieldDef, PRESET_CODEX_CATEGORIES, UNCATEGORIZED_CATEGORY_ID, getBuiltinCodexCategory, makeCustomCodexCategory, makeProfileCodexCategory, makeUncategorizedCodexCategory, CODEX_ICON_OPTIONS, withLinkingSection } from '../models/Codex';
+import { CodexEntry, CodexCategoryDef, CodexFieldCategory, CodexFieldDef, PRESET_CODEX_CATEGORIES, UNCATEGORIZED_CATEGORY_ID, getBuiltinCodexCategory, libraryCategoryHasProfilePage, makeCustomCodexCategory, makeProfileCodexCategory, makeUncategorizedCodexCategory, CODEX_ICON_OPTIONS, withLinkingSection, shouldCreateLibraryCategoryFolder } from '../models/Codex';
 import { CHARACTER_CATEGORIES } from '../models/Character';
 import { LOCATION_CATEGORIES, WORLD_CATEGORIES } from '../models/Location';
 import { CODEX_VIEW_TYPE, CHARACTER_VIEW_TYPE, LOCATION_VIEW_TYPE } from '../constants';
@@ -22,6 +22,7 @@ import {
     renderLibraryStoryGraph,
     setLibraryContentMode,
     syncStoryGraphLibraryNodeTypes,
+    type LibraryContentMode,
 } from '../components/LibraryModeBar';
 import type { StoryGraph } from '../components/StoryGraph';
 import { absorbCoverIntoGallery, libraryCoverPath, pickImage as pickImageModal, resolveImagePath, syncLibraryCoverFromGallery } from '../components/ImagePicker';
@@ -98,7 +99,7 @@ import {
     resolveLibraryFolderName,
     sanitizeLibraryFolderName,
 } from '../services/LibraryCategorySync';
-import { libraryCategoryPack } from '../models/ProjectCapabilities';
+import { libraryCategoryPack, usesNarrativeLibraryCategories } from '../models/ProjectCapabilities';
 import { VirtualScroller } from '../components/VirtualScroller';
 import {
     ALL_LIBRARY_CATEGORY_ID,
@@ -507,7 +508,7 @@ export class CodexView extends ProjectBoundItemView {
         if (
             !categoriesChanged
             && !this.selectedEntry
-            && getLibraryContentMode(this.plugin, this.getBoundProjectFile()) === 'browse'
+            && this.libraryOverviewMode() === 'browse'
             && this.rootContainer?.querySelector('.library-native-base-embed')
         ) {
             const title = this.plugin.getProjectDisplayName(this.getBoundProjectFile());
@@ -551,6 +552,11 @@ export class CodexView extends ProjectBoundItemView {
         const storyGraphActive = !this.selectedEntry
             && getLibraryContentMode(this.plugin, this.getBoundProjectFile()) === 'story-graph'
             && !isMobile;
+        const browseOnlyCategory = !libraryCategoryHasProfilePage(this.activeCategory);
+        const nativeBaseInCategoryRow = !this.selectedEntry
+            && !storyGraphActive
+            && browseOnlyCategory
+            && this.libraryOverviewMode() === 'browse';
         renderCodexCategoryTabs(container, {
             activeId: storyGraphActive ? 'story-graph' : this.activeCategory || '',
             leaf: this.leaf,
@@ -564,6 +570,13 @@ export class CodexView extends ProjectBoundItemView {
                     if (this.rootContainer) this.renderView(this.rootContainer);
                 },
             ),
+            renderAfterModeActions: nativeBaseInCategoryRow
+                ? actions => renderOpenNativeLibraryBaseAction(
+                    actions,
+                    this.plugin,
+                    this.activeCategory || ALL_LIBRARY_CATEGORY_ID,
+                )
+                : undefined,
             onCategoriesChanged: () => {
                 if (this.rootContainer) this.renderView(this.rootContainer);
             },
@@ -595,16 +608,21 @@ export class CodexView extends ProjectBoundItemView {
 
     private renderOverview(container: HTMLElement): void {
         container.empty();
-        if (getLibraryContentMode(this.plugin, this.getBoundProjectFile()) === 'browse' && !this.isProfileOverviewMode()) {
-            renderLibraryModeToolbar(
-                container,
-                actions => this.renderOverviewModes(actions),
-                actions => renderOpenNativeLibraryBaseAction(
-                    actions,
-                    this.plugin,
-                    this.activeCategory || ALL_LIBRARY_CATEGORY_ID,
-                ),
-            );
+        if (this.libraryOverviewMode() === 'browse') {
+            // Browse-only academic categories have no profile/browse switch.
+            // Their native Base opener lives in the category row above, so a
+            // single icon never creates an otherwise empty content toolbar.
+            if (libraryCategoryHasProfilePage(this.activeCategory)) {
+                renderLibraryModeToolbar(
+                    container,
+                    actions => this.renderOverviewModes(actions),
+                    actions => renderOpenNativeLibraryBaseAction(
+                        actions,
+                        this.plugin,
+                        this.activeCategory || ALL_LIBRARY_CATEGORY_ID,
+                    ),
+                );
+            }
             void renderNativeLibraryBase(
                 container,
                 this.plugin,
@@ -1050,11 +1068,18 @@ export class CodexView extends ProjectBoundItemView {
         }, event);
     }
 
+    private libraryOverviewMode(): LibraryContentMode {
+        const mode = getLibraryContentMode(this.plugin, this.getBoundProjectFile());
+        if (mode !== 'profile') return mode;
+        return libraryCategoryHasProfilePage(this.activeCategory) ? 'profile' : 'browse';
+    }
+
     private isProfileOverviewMode(): boolean {
-        return getLibraryContentMode(this.plugin, this.getBoundProjectFile()) === 'profile';
+        return this.libraryOverviewMode() === 'profile';
     }
 
     private renderOverviewModes(parent: HTMLElement): void {
+        if (!libraryCategoryHasProfilePage(this.activeCategory)) return;
         const profileLabel = t('{name} Profiles', {
             name: resolveLibraryCategoryLabel(
                 this.plugin,
@@ -2814,7 +2839,7 @@ export class CodexView extends ProjectBoundItemView {
         try {
             const codexFolder = this.sceneManager.getCodexFolder();
             const entry = await this.codexManager.createEntry(codexFolder, this.activeCategory, name);
-            this.selectedEntry = entry.filePath;
+            this.selectedEntry = libraryCategoryHasProfilePage(this.activeCategory) ? entry.filePath : null;
             new Notice(t('Created {name}', { name }));
             if (this.rootContainer) this.renderView(this.rootContainer);
         } catch (err) {
@@ -3008,10 +3033,16 @@ export class CodexView extends ProjectBoundItemView {
         el.addClass('codex-category-manager');
 
         const hiddenFixed = new Set(this.plugin.settings.libraryHiddenFixedCategories || []);
+        const pack = libraryCategoryPack(this.plugin.sceneManager.activeProject?.capabilities);
+        const narrativeHubs = usesNarrativeLibraryCategories(pack);
         const state = existingState || {
             enabled: new Set([
                 ...this.plugin.settings.codexEnabledCategories,
-                ...FIXED_LIBRARY_CATEGORY_IDS.filter(id => !hiddenFixed.has(id)),
+                ...FIXED_LIBRARY_CATEGORY_IDS.filter(id => {
+                    if (hiddenFixed.has(id)) return false;
+                    if ((id === 'characters' || id === 'locations') && !narrativeHubs) return false;
+                    return true;
+                }),
             ]),
             categories: (this.plugin.settings.codexCustomCategories || []).map(category => ({ ...category })),
             deletedPresets: new Set(this.plugin.settings.codexDeletedPresetCategories || []),
@@ -3049,6 +3080,7 @@ export class CodexView extends ProjectBoundItemView {
             fieldsDefinition?: CodexCategoryDef;
             draft?: ManagedCodexCategory;
         }> = [
+            ...(narrativeHubs ? [
             {
                 id: 'characters',
                 label: displayLabel('characters', 'Characters'),
@@ -3077,8 +3109,10 @@ export class CodexView extends ProjectBoundItemView {
                     [...WORLD_CATEGORIES, ...LOCATION_CATEGORIES],
                 ),
             },
+            ] : []),
             ...PRESET_CODEX_CATEGORIES
-                .filter(category => !deletedPresetIds.has(category.id))
+                .filter(category => !deletedPresetIds.has(category.id)
+                    && shouldCreateLibraryCategoryFolder(category.id, pack))
                 .map(category => {
                     const override = state.categories.find(item => item.id === category.id);
                     return {
@@ -3406,12 +3440,17 @@ export class CodexView extends ProjectBoundItemView {
         await this.plugin.saveSettings();
 
         if (!project.libraryFolders) project.libraryFolders = {};
-        project.libraryFolders.characters =
-            project.libraryFolders.characters
-            || this.plugin.sceneManager.getLibraryFolderName('characters');
-        project.libraryFolders.locations =
-            project.libraryFolders.locations
-            || this.plugin.sceneManager.getLibraryFolderName('locations');
+        if (usesNarrativeLibraryCategories(libraryCategoryPack(project.capabilities))) {
+            project.libraryFolders.characters =
+                project.libraryFolders.characters
+                || this.plugin.sceneManager.getLibraryFolderName('characters');
+            project.libraryFolders.locations =
+                project.libraryFolders.locations
+                || this.plugin.sceneManager.getLibraryFolderName('locations');
+        } else {
+            delete project.libraryFolders.characters;
+            delete project.libraryFolders.locations;
+        }
 
         for (const category of state.categories) {
             if (category.id === UNCATEGORIZED_CATEGORY_ID) continue;

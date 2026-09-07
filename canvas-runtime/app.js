@@ -1024,7 +1024,7 @@ const fileViews = {
 };
 
 const fileViewLabels = {
-  adventure: "Node-based presentation canvas",
+  adventure: "Presentation",
   characters: "Referenced materials",
   events: "Events sheet",
   variables: "Playbook",
@@ -1170,7 +1170,7 @@ const uiTranslations = {
     "Add entry": "新增资料条目",
     "Cancel": "取消",
     "Canvas": "画布",
-    "Node-based presentation canvas": "节点式演示画布",
+    "Presentation": "演示",
     "Referenced materials": "引用资料",
     "Associated materials": "关联资料",
     "Open original": "打开原文",
@@ -4584,16 +4584,16 @@ function localizeSelectOptions(selector, labels, root = dom.scope) {
 function localizeStaticShell() {
   if (!dom.scope) return;
   if (!window.NarrativeCanvasHost) {
-    document.title = t("Node-based presentation canvas");
+    document.title = t("Presentation");
   }
 
   [
-    [".sidebar-left > .pane-header .pane-kicker", "Node-based presentation canvas"],
+    [".sidebar-left > .pane-header .pane-kicker", "Presentation"],
     [".project-file-section h2", "Project File"],
     [".sidebar-left .nav-section:nth-of-type(2) h2", "Workspace"],
     [".palette h2", "Node Templates"],
     [".web-project-tabs [data-action='open-project-library'] span", "Project Library"],
-    [".web-project-tabs [data-file-id='adventure'] span", "Node-based presentation canvas"],
+    [".web-project-tabs [data-file-id='adventure'] span", "Presentation"],
     [".custom-node-form > summary", "Manage node types"],
     [".workspace-file-label .pane-kicker", "File"],
     [".sidebar-right .pane-kicker", "Inspector"],

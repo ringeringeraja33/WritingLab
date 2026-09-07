@@ -19,6 +19,22 @@ const context = vm.createContext({ module: { exports: {} }, performance });
 vm.runInContext(result.outputFiles[0].text, context);
 const { addedMutationRoots, matchingElements, outermostElements, CoalescedTask, StartupDiagnostics } = context.module.exports;
 
+test('every WritingLab view hides the native Obsidian and Commander header before mount', async () => {
+    const [main, styles] = await Promise.all([
+        readFile(new URL('../main.ts', import.meta.url), 'utf8'),
+        readFile(new URL('../styles.css', import.meta.url), 'utf8'),
+    ]);
+    const registration = main.slice(
+        main.indexOf('const registerWritingLabView'),
+        main.indexOf('// Register layout bootstrap'),
+    );
+    assert.match(registration, /leafContent\.addClass\('nl-writing-lab-leaf'\)/);
+    assert.match(registration, /view\.register\(\(\) => leafContent\.removeClass\('nl-writing-lab-leaf'\)\)/);
+    assert.doesNotMatch(registration, /this\.registerView\((?:BOARD|COLUMN|TRACK|SUBWAY|CHAPTER|PROJECT|PLOTGRID|TIMELINE|STORYLINE|CHARACTER|STATS|LOCATION|NAVIGATOR|CODEX|SCENE|NOTES|SYNOPSIS|DETAILS|MANUSCRIPT|RESEARCH|WRITING|NCANVAS)/);
+    assert.match(styles, /\.workspace-leaf-content\.nl-writing-lab-leaf > \.view-header/);
+    assert.match(styles, /display:\s*none !important/);
+});
+
 test('navigator restore resolves before layout-ready and cancels stale mounts after close/reopen', async () => {
     const source = await readFile(new URL('../views/NavigatorView.ts', import.meta.url), 'utf8');
     const onOpen = source.slice(source.indexOf('    async onOpen()'), source.indexOf('    private mountNavigator()'));

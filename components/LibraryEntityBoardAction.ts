@@ -3,10 +3,11 @@
  * (Characters, Locations, Codex categories).
  */
 import * as obsidian from 'obsidian';
-import { Notice } from 'obsidian';
+import { Notice, normalizePath } from 'obsidian';
 import { attachTooltip } from './Tooltip';
 import { t } from '../utils/i18n';
 import type SceneCardsPlugin from '../main';
+import { deriveProjectFoldersFromFilePath } from '../models/StoryLineProject';
 
 export interface LibraryEntityBoardActionOpts {
     plugin: SceneCardsPlugin;
@@ -22,8 +23,16 @@ export interface LibraryEntityBoardActionOpts {
 export function mountLibraryEntityBoardAction(
     headerRight: HTMLElement,
     opts: LibraryEntityBoardActionOpts,
-): HTMLButtonElement {
+): HTMLButtonElement | null {
     const boardPath = opts.plugin.findLibraryEntityBoard(opts.notePath, opts.name);
+    const notePath = normalizePath(opts.notePath);
+    const project = opts.plugin.sceneManager.getProjects().find(item => {
+        const root = normalizePath(deriveProjectFoldersFromFilePath(item.filePath).baseFolder);
+        return notePath === root || notePath.startsWith(`${root}/`);
+    });
+    // Existing boards remain recoverable after a module is disabled, but a
+    // disabled Canvas module must never offer a create action.
+    if (!boardPath && !opts.plugin.capabilityService.isEnabled('canvas', project)) return null;
     const btn = headerRight.createEl('button', {
         cls: 'codex-detail-action-btn',
         attr: { 'aria-label': boardPath ? t('Open board') : t('Create board') },

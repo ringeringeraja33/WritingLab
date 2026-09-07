@@ -14161,8 +14161,8 @@ const CANVAS_INDEX_HTML = [
   "    \u003cmeta charset=\"utf-8\"\u003e",
   "    \u003cmeta name=\"viewport\" content=\"width=device-width, initial-scale=1\"\u003e",
   "    \u003cmeta name=\"theme-color\" content=\"#101010\"\u003e",
-  "    \u003cmeta name=\"apple-mobile-web-app-title\" content=\"Node-based presentation canvas\"\u003e",
-  "    \u003ctitle\u003eNode-based presentation canvas\u003c/title\u003e",
+  "    \u003cmeta name=\"apple-mobile-web-app-title\" content=\"Presentation\"\u003e",
+  "    \u003ctitle\u003ePresentation\u003c/title\u003e",
   "    \u003clink rel=\"icon\" type=\"image/svg+xml\" href=\"./assets/icons/favicon.svg\"\u003e",
   "    \u003clink rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"./assets/icons/favicon-32x32.png\"\u003e",
   "    \u003clink rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"./assets/icons/apple-touch-icon.png\"\u003e",
@@ -14174,7 +14174,7 @@ const CANVAS_INDEX_HTML = [
   "      \u003caside class=\"sidebar sidebar-left\" data-sidebar=\"left\"\u003e",
   "        \u003cheader class=\"pane-header\"\u003e",
   "          \u003cdiv class=\"pane-title\"\u003e",
-  "            \u003cspan class=\"pane-kicker\"\u003eNode-based presentation canvas\u003c/span\u003e",
+  "            \u003cspan class=\"pane-kicker\"\u003ePresentation\u003c/span\u003e",
   "            \u003ch1 id=\"vaultProjectTitle\"\u003eSample\u003c/h1\u003e",
   "          \u003c/div\u003e",
   "          \u003cdiv class=\"header-actions\"\u003e",
@@ -14253,7 +14253,7 @@ const CANVAS_INDEX_HTML = [
   "      \u003cmain class=\"canvas-workspace\"\u003e",
   "        \u003cnav class=\"web-project-tabs\" data-web-only aria-label=\"Project tabs\"\u003e",
   "          \u003cbutton type=\"button\" data-action=\"open-project-library\" data-web-only\u003e\u003csvg viewBox=\"0 0 24 24\" aria-hidden=\"true\"\u003e\u003cpath d=\"M4 3v18M9 3v18M14 3v18M18 3l4 18\"/\u003e\u003c/svg\u003e\u003cspan\u003eProject Library\u003c/span\u003e\u003c/button\u003e",
-  "          \u003cbutton type=\"button\" data-file-id=\"adventure\"\u003e\u003csvg viewBox=\"0 0 24 24\" aria-hidden=\"true\"\u003e\u003crect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"/\u003e\u003cpath d=\"m10 7 5 3-5 3ZM12 17v4M8 21h8\"/\u003e\u003c/svg\u003e\u003cspan\u003eNode-based presentation canvas\u003c/span\u003e\u003c/button\u003e",
+  "          \u003cbutton type=\"button\" data-file-id=\"adventure\"\u003e\u003csvg viewBox=\"0 0 24 24\" aria-hidden=\"true\"\u003e\u003crect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"/\u003e\u003cpath d=\"m10 7 5 3-5 3ZM12 17v4M8 21h8\"/\u003e\u003c/svg\u003e\u003cspan\u003ePresentation\u003c/span\u003e\u003c/button\u003e",
   "          \u003cbutton type=\"button\" class=\"web-library-toggle\" data-action=\"toggle-project-library\"\u003eDisable project Library\u003c/button\u003e",
   "        \u003c/nav\u003e",
   "        \u003cheader class=\"workspace-global-bar\"\u003e",
@@ -15811,7 +15811,7 @@ function installNarrativeCanvasApp() {
   };
 
   const fileViewLabels = {
-    adventure: "Node-based presentation canvas",
+    adventure: "Presentation",
     characters: "Referenced materials",
     events: "Events sheet",
     variables: "Playbook",
@@ -15957,7 +15957,7 @@ function installNarrativeCanvasApp() {
       "Add entry": "新增资料条目",
       "Cancel": "取消",
       "Canvas": "画布",
-      "Node-based presentation canvas": "节点式演示画布",
+      "Presentation": "演示",
       "Referenced materials": "引用资料",
       "Associated materials": "关联资料",
       "Open original": "打开原文",
@@ -19371,16 +19371,16 @@ function installNarrativeCanvasApp() {
   function localizeStaticShell() {
     if (!dom.scope) return;
     if (!window.NarrativeCanvasHost) {
-      document.title = t("Node-based presentation canvas");
+      document.title = t("Presentation");
     }
 
     [
-      [".sidebar-left > .pane-header .pane-kicker", "Node-based presentation canvas"],
+      [".sidebar-left > .pane-header .pane-kicker", "Presentation"],
       [".project-file-section h2", "Project File"],
       [".sidebar-left .nav-section:nth-of-type(2) h2", "Workspace"],
       [".palette h2", "Node Templates"],
       [".web-project-tabs [data-action='open-project-library'] span", "Project Library"],
-      [".web-project-tabs [data-file-id='adventure'] span", "Node-based presentation canvas"],
+      [".web-project-tabs [data-file-id='adventure'] span", "Presentation"],
       [".custom-node-form > summary", "Manage node types"],
       [".workspace-file-label .pane-kicker", "File"],
       [".sidebar-right .pane-kicker", "Inspector"],

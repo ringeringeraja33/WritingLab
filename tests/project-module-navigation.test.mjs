@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { build, transform } from 'esbuild';
 import ts from 'typescript';
 
-const bundle = await build({ stdin: { contents: `export * from './models/ProjectCapabilities'; export * from './models/ProjectPages'; export * from './services/ProjectCapabilityService';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm' });
+const bundle = await build({ stdin: { contents: `export * from './models/ProjectCapabilities'; export * from './models/ProjectPages'; export * from './services/ProjectCapabilityService'; export * from './utils/tabStripReorder';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm' });
 const api = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 const { normalizeProjectCapabilities: normalize, moduleEnabled: enabled, toggleProjectModule: toggle, PROJECT_PAGES } = api;
 const custom = modules => normalize({ version: 2, preset: 'custom', modules });
@@ -148,30 +148,52 @@ test('failed manifest save restores suspended leaves', async () => {
 test('creation and settings share the grouped picker; writing counters are the final two rows', async () => {
     const picker = await readFile('components/ProjectModulePicker.ts', 'utf8');
     assert.match(picker, /Narrative planning'[\s\S]*?Narrative content'[\s\S]*?Materials and research'/);
+    assert.match(picker, /modules: \['scenes', 'sceneDetails', 'sceneNotes', 'synopsis', 'series'\]/);
+    assert.match(picker, /nl-library-pack-choices/);
+    assert.match(picker, /Literature library/);
+    assert.match(picker, /Narrative library/);
+    assert.match(picker, /applyLibraryPackToModules/);
+    assert.doesNotMatch(picker, /Can be used together with characters and locations/);
     assert.match(picker, /Writing progress', icon: 'chart-no-axes-column', modules: \['writingTracker', 'writingStats'\]/);
+    assert.doesNotMatch(picker, /citations/);
     assert.match(mainText, /renderProjectModulePicker\(moduleChoices/);
     assert.match(mainText, /const labels = \[t\('Project basics'\), t\('Choose modules'\), t\('Review and create'\)\]/);
     assert.doesNotMatch(mainText, /const browseBtn/);
     const styles = await readFile('styles.css', 'utf8');
     const rule = styles.match(/\.nl-project-module-choices\s*\{[^}]+\}/)[0];
     assert.doesNotMatch(rule, /max-height|overflow-y:\s*auto/);
-    const cell = styles.match(/\.nl-project-module-picker \.nl-module-grid > \.setting-item \{[^}]+\}/)[0];
-    assert.match(cell, /padding:\s*10px 14px/);
+    const cell = styles.match(/body \.nl-project-module-picker \.nl-module-grid > \.setting-item\.setting-item,[\s\S]*?background: var\(--background-primary\);/)[0];
+    assert.match(cell, /padding:\s*14px 18px/);
     assert.match(cell, /flex-flow:\s*row nowrap/);
+    assert.match(cell, /border-top:\s*1px solid/);
+    assert.match(cell, /border-left:\s*1px solid/);
     assert.match(styles, /\.nl-project-module-picker \.nl-module-grid \.setting-item-control \{[\s\S]*?position:\s*static !important/);
     assert.match(styles, /\.nl-project-module-picker \.nl-module-grid \.setting-item-description \{[\s\S]*?overflow-wrap:\s*anywhere/);
-    assert.match(styles, /\.nl-module-group \{[^}]*padding:\s*14px 16px 16px/s);
+    assert.match(styles, /\.nl-module-group \{[^}]*padding:\s*16px 16px 16px/s);
     assert.match(styles, /\.nl-module-grid \{[\s\S]*?grid-template-columns:\s*repeat\(2,/);
     assert.doesNotMatch(styles, /\.nl-module-grid > \.setting-item:last-child:nth-child\(odd\)/);
     assert.doesNotMatch(styles, /\.nl-module-group-tracking \.nl-module-grid \{[^}]*grid-template-columns:\s*1fr/);
 });
 
+test('tab strip insert index splits at each tab midpoint', () => {
+    const tabs = [{ left: 0, width: 100 }, { left: 100, width: 80 }];
+    assert.equal(api.tabStripInsertIndex(tabs, 10), 0);
+    assert.equal(api.tabStripInsertIndex(tabs, 60), 1);
+    assert.equal(api.tabStripInsertIndex(tabs, 170), 2);
+    assert.equal(api.tabStripMoveCommits(0, 1), false);
+    assert.equal(api.tabStripMoveCommits(0, 2), true);
+});
+
 test('tab bar drag reorders without disabling modules', async () => {
     const switcher = await readFile('components/ViewSwitcher.ts', 'utf8');
-    assert.match(switcher, /tab\.draggable = true/);
+    assert.match(switcher, /attachPointerTabReorder/);
+    assert.doesNotMatch(switcher, /tab\.draggable = true/);
     assert.match(switcher, /updateProjectTabOrder/);
     assert.match(switcher, /flattenTabGroupOrder/);
     assert.match(switcher, /PROJECT_TAB_GROUPS/);
+    const categoryTabs = await readFile('components/CodexCategoryTabs.ts', 'utf8');
+    assert.match(categoryTabs, /attachPointerTabReorder/);
+    assert.match(await readFile('utils/tabStripReorder.ts', 'utf8'), /addEventListener\('pointerup', onDocUp, true\)/);
     assert.match(mainText, /async updateProjectTabOrder/);
     const orderFn = mainText.slice(mainText.indexOf('async updateProjectTabOrder'), mainText.indexOf('closeDisabledProjectViews'));
     assert.doesNotMatch(orderFn, /prepareForModuleDisable/);

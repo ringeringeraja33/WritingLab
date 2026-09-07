@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-floating-promises, @typescript-eslint/no-misused-promises, @typescript-eslint/no-redundant-type-constituents -- Obsidian's API surface and several untyped third-party libraries force dynamic dispatch; floating promises are intentional in DOM/event handlers; matching enable at end of file */
+/* eslint-disable @typescript-eslint/no-floating-promises, @typescript-eslint/no-redundant-type-constituents -- Obsidian's API surface and several untyped third-party libraries force dynamic dispatch; floating promises are intentional in DOM/event handlers; matching enable at end of file */
 /**
  * Shared Codex category tab bar — rendered in CodexView, CharacterView, and LocationView
  * so the user can switch between categories from any of those views.
@@ -25,6 +25,7 @@ import {
 } from '../services/LibraryCategorySync';
 import { t } from '../utils/i18n';
 import { showMenuSafely } from '../utils/obsidianMenu';
+import { attachPointerTabReorder } from '../utils/tabStripReorder';
 import { UNCATEGORIZED_CATEGORY_ID } from '../models/Codex';
 
 export interface CodexTabsOptions {
@@ -281,59 +282,15 @@ function attachTabReordering(
     plugin: SceneCardsPlugin,
     onCategoriesChanged?: () => void,
 ): void {
-    let dragged: HTMLButtonElement | null = null;
-    let suppressClickUntil = 0;
-
-    const clearIndicators = () => {
-        for (const item of renderedTabs) {
-            item.el.removeClass('is-drag-over-before', 'is-drag-over-after');
-        }
-    };
-
-    for (const item of renderedTabs) {
-        const tab = item.el;
-        tab.draggable = true;
-        tab.addClass('is-reorderable');
-        tab.addEventListener('click', event => {
-            if (Date.now() >= suppressClickUntil) return;
-            event.preventDefault();
-            event.stopImmediatePropagation();
-        }, true);
-        tab.addEventListener('dragstart', event => {
-            dragged = tab;
-            tab.addClass('is-dragging');
-            event.dataTransfer?.setData('text/plain', item.id);
-            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-        });
-        tab.addEventListener('dragover', event => {
-            if (!dragged || dragged === tab) return;
-            event.preventDefault();
-            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-            clearIndicators();
-            const rect = tab.getBoundingClientRect();
-            tab.addClass(
-                event.clientX < rect.left + rect.width / 2
-                    ? 'is-drag-over-before'
-                    : 'is-drag-over-after',
-            );
-        });
-        tab.addEventListener('drop', async event => {
-            if (!dragged || dragged === tab) return;
-            event.preventDefault();
-            const rect = tab.getBoundingClientRect();
-            const insertAfter = event.clientX >= rect.left + rect.width / 2;
-            tabs.insertBefore(dragged, insertAfter ? tab.nextSibling : tab);
-            suppressClickUntil = Date.now() + 250;
-            clearIndicators();
-
-            const order = Array.from(tabs.querySelectorAll<HTMLButtonElement>('.codex-tab[data-category-id]'))
-                .map(element => element.dataset.categoryId)
-                .filter((id): id is string => !!id);
-            plugin.settings.libraryCategoryOrder = order;
-
-            // Keep generic category consumers (such as the view switcher) in the same order.
+    if (renderedTabs.length < 2) return;
+    attachPointerTabReorder({
+        container: tabs,
+        getTabs: () => renderedTabs.map(item => item.el),
+        idOf: tab => tab.dataset.categoryId,
+        onReorder: async ordered => {
+            plugin.settings.libraryCategoryOrder = ordered;
             const enabled = new Set(plugin.settings.codexEnabledCategories || []);
-            const orderedCodex = order.filter(id =>
+            const orderedCodex = ordered.filter(id =>
                 id !== 'characters' && id !== 'locations' && enabled.has(id));
             for (const id of plugin.settings.codexEnabledCategories || []) {
                 if (!orderedCodex.includes(id)) orderedCodex.push(id);
@@ -341,13 +298,13 @@ function attachTabReordering(
             plugin.settings.codexEnabledCategories = orderedCodex;
             await plugin.saveSettings();
             onCategoriesChanged?.();
-        });
-        tab.addEventListener('dragend', () => {
-            tab.removeClass('is-dragging');
-            clearIndicators();
-            dragged = null;
-        });
-    }
+        },
+        onError: error => {
+            new obsidian.Notice(t('Could not save Library category order') + ': ' + String(error));
+            onCategoriesChanged?.();
+        },
+        appendBefore: () => tabs.querySelector(':scope > .codex-category-actions'),
+    });
 }
 
 function attachRenameMenu(
@@ -501,4 +458,4 @@ function switchTo(
         plugin.activateView(viewType);
     }
 }
-/* eslint-enable @typescript-eslint/no-floating-promises, @typescript-eslint/no-misused-promises, @typescript-eslint/no-redundant-type-constituents -- end of file-wide suppression block opened at line 1 */
+/* eslint-enable @typescript-eslint/no-floating-promises, @typescript-eslint/no-redundant-type-constituents -- end of file-wide suppression block opened at line 1 */

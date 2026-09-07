@@ -1219,11 +1219,16 @@ test('main prefers Library/datasheet.xlsx and migrates legacy System plotgrid', 
 });
 
 test('PlotgridView lazy-loads Univer host and edits links as Markdown text', async () => {
-    const [view, styles, host] = await Promise.all([
+    const [view, board, styles, host] = await Promise.all([
         readFile(new URL('../views/PlotgridView.ts', import.meta.url), 'utf8'),
+        readFile(new URL('../views/BoardView.ts', import.meta.url), 'utf8'),
         readFile(new URL('../styles.css', import.meta.url), 'utf8'),
         readFile(new URL('../services/PlotGridUniverHost.ts', import.meta.url), 'utf8'),
     ]);
+    assert.match(view, /story-line-toolbar plot-grid-toolbar sl-two-row-toolbar/);
+    assert.match(board, /story-line-toolbar sl-two-row-toolbar/);
+    assert.match(styles, /\.story-line-toolbar\.sl-two-row-toolbar\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*28px 28px/s);
+    assert.match(styles, /\.story-line-toolbar-controls \.clickable-icon svg\s*\{[^}]*width:\s*16px[^}]*height:\s*16px/s);
     assert.match(view, /hasHydratedDocument/);
     assert.match(view, /if \(!plugin \|\| !this\.hasHydratedDocument\) return/);
     assert.match(view, /if \(!this\.hasHydratedDocument\) return/);

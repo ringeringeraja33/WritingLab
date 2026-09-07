@@ -88,12 +88,12 @@ export class WritingTrackerView extends ItemView {
         if (!this.folderScope) {
             header.createEl('p', {
                 cls: 'nl-tracker-page-lead',
-                text: t('Vault-wide net words. Project sprint and scene totals stay on the Statistics tab.'),
+                text: t('Recorded net word changes across WritingLab projects. Existing document words are the starting baseline.'),
             });
         }
 
         const scopes = header.createDiv('nl-tracker-tabs');
-        for (const [folder, label] of [[false,t('Vault')],[true,t('Folder')]] as const) {
+        for (const [folder, label] of [[false,t('All writing projects')],[true,t('Folder')]] as const) {
             const button = scopes.createEl('button', {text:label,cls:'nl-tracker-tab'+(this.folderScope === folder ? ' is-active' : '')});
             button.addEventListener('click', () => {this.folderScope = folder; this.render();});
         }

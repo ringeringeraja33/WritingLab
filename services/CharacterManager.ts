@@ -612,6 +612,9 @@ export class CharacterManager {
     }
 
     private async ensureFolder(folderPath: string): Promise<void> {
+        if (!normalizePath(folderPath)) {
+            throw new Error('Character storage is not enabled for this project.');
+        }
         await ensureVaultFolder(this.app, folderPath);
     }
 

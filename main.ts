@@ -5,7 +5,8 @@ import { asRecord, isRecord } from './utils/narrow';
 import { addedMutationRoots, matchingElements } from './utils/mutationRoots';
 import { StartupDiagnostics } from './utils/startupDiagnostics';
 import { deferWorkspaceView } from './utils/deferWorkspaceView';
-import { countWordRevisionChurn, wordcountOptionsForProfile } from './utils/wordcountText';
+import { wordcountTokens, wordcountOptionsForProfile } from './utils/wordcountText';
+import { WritingInventory } from './services/WritingInventory';
 import { FolderWritingTracker } from './services/FolderWritingTracker';
 import { FolderTrackerPicker } from './components/FolderTrackerControls';
 import { consumeTextareaUndoKey, isLocalTextUndoTarget, isRedoKey, isUndoKey } from './utils/textareaHistory';
@@ -27,10 +28,12 @@ import { ProjectCapabilityService } from './services/ProjectCapabilityService';
 import { DocumentSourceService, ProjectMarkdownDocumentSource } from './services/DocumentSourceService';
 import {
     PROJECT_PRESETS,
+    applyLibraryPackToModules,
     capabilitiesForPreset,
     libraryCategoryPack,
     moduleEnabled,
     resolveModuleDependencies,
+    usesAuthoredCanvasFolder,
     type ProjectModuleId,
     type ProjectPresetId,
     type ProjectCapabilities,
@@ -117,6 +120,7 @@ import {
 } from './services/PlotGridXlsxCodec';
 import {
     deriveProjectFoldersFromFilePath,
+    projectRootFromSceneFolder,
     LEGACY_NCANVAS_FOLDER,
     LEGACY_SYSTEM_NCANVAS_FOLDER,
     type SeriesMetadata,
@@ -178,6 +182,7 @@ import {
     readLibraryCategorySettings,
     reconcileLibraryCategoriesForActiveProject,
     seedStorylinePresetCategories,
+    initialLibraryCategorySettings,
 } from './services/LibraryCategorySync';
 import {
     applyLibraryProfileLayout,
@@ -350,7 +355,7 @@ class ProjectFolderSuggest extends AbstractInputSuggest<ProjectFolderChoice> {
             }
         };
         walk(this.app.vault.getRoot());
-        const skipChild = new Set(['library', 'scenes', 'system', 'canvas', 'notes', 'research', 'scenenotes', 'archive', 'attachments']);
+        const skipChild = new Set(['library', 'scenes', 'theses', 'system', 'canvas', 'notes', 'research', 'scenenotes', 'archive', 'attachments']);
         for (const folder of folders.sort((a, b) => a.path.localeCompare(b.path))) {
             const name = folder.path.split('/').pop()?.toLowerCase() ?? '';
             if (skipChild.has(name)) continue;
@@ -400,15 +405,14 @@ export default class SceneCardsPlugin extends Plugin {
     private documentWordTotal = 0;
     private documentWordOwner = '';
     private documentWordRefreshTimer: number | null = null;
+    private documentWordTexts: Array<[string, string]> = [];
+    private documentWordScan = 0;
+    private writingInventory = new WritingInventory();
+    private writingInventoryOwner = '';
     /** Set to true once System/ migration is confirmed — guards saveSettings stripping */
     private _systemMigrationDone = false;
     /** Snapshot of colour settings from data.json (global defaults) */
     private _globalColorDefaults: Partial<SceneCardsSettings> = {};
-    /**
-     * One-time seed for migrating Library categories out of global data.json.
-     * Captured at load; each project gets its own System/library-categories.json.
-     */
-    private _legacyLibraryCategoryDefaults = emptyLibraryCategorySettings();
     /** One-time seed when migrating profile field layout out of global data.json. */
     private _legacyLibraryProfileLayoutDefaults = emptyLibraryProfileLayout();
     locationManager!: LocationManager;
@@ -651,69 +655,85 @@ export default class SceneCardsPlugin extends Plugin {
             this.refreshOpenViews();
         };
 
+        // Mark every plugin-owned view before Obsidian/Commander paints its
+        // native header. CSS can then hide that redundant row consistently,
+        // including loading and no-project states where data-type may lag.
+        const registerWritingLabView = (
+            viewType: string,
+            factory: (leaf: WorkspaceLeaf) => ItemView,
+        ): void => {
+            this.registerView(viewType, leaf => {
+                const view = factory(leaf);
+                const leafContent = view.containerEl;
+                leafContent.addClass('nl-writing-lab-leaf');
+                view.register(() => leafContent.removeClass('nl-writing-lab-leaf'));
+                return view;
+            });
+        };
+
         // Register views
-        this.registerView(BOARD_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(BOARD_VIEW_TYPE, (leaf) =>
             deferWorkspaceView(new BoardView(leaf, this, this.sceneManager), this.app.workspace, this.projectStartupReady, t('Loading...'))
         );
-        this.registerView(COLUMN_BOARD_VIEW_TYPE, leaf =>
+        registerWritingLabView(COLUMN_BOARD_VIEW_TYPE, leaf =>
             deferWorkspaceView(new BoardView(leaf, this, this.sceneManager, COLUMN_BOARD_VIEW_TYPE, 'kanban'), this.app.workspace, this.projectStartupReady, t('Loading...')));
-        this.registerView(TRACK_COMPARISON_VIEW_TYPE, leaf =>
+        registerWritingLabView(TRACK_COMPARISON_VIEW_TYPE, leaf =>
             deferWorkspaceView(new TimelineView(leaf, this, this.sceneManager, TRACK_COMPARISON_VIEW_TYPE, 'tracks'), this.app.workspace, this.projectStartupReady, t('Loading...')));
-        this.registerView(SUBWAY_VIEW_TYPE, leaf =>
+        registerWritingLabView(SUBWAY_VIEW_TYPE, leaf =>
             deferWorkspaceView(new StorylineView(leaf, this, this.sceneManager, SUBWAY_VIEW_TYPE, 'subway'), this.app.workspace, this.projectStartupReady, t('Loading...')));
-        this.registerView(CHAPTER_TEMPLATES_VIEW_TYPE, leaf =>
+        registerWritingLabView(CHAPTER_TEMPLATES_VIEW_TYPE, leaf =>
             deferWorkspaceView(new TimelineView(leaf, this, this.sceneManager, CHAPTER_TEMPLATES_VIEW_TYPE, 'templates'), this.app.workspace, this.projectStartupReady, t('Loading...')));
-        this.registerView(PROJECT_OVERVIEW_VIEW_TYPE, leaf => new ProjectOverviewView(leaf, this));
-        this.registerView(PLOTGRID_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(PROJECT_OVERVIEW_VIEW_TYPE, leaf => new ProjectOverviewView(leaf, this));
+        registerWritingLabView(PLOTGRID_VIEW_TYPE, (leaf) =>
             deferWorkspaceView(new PlotgridView(leaf, this), this.app.workspace, this.projectStartupReady, t('Loading...'))
         );
-        this.registerView(TIMELINE_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(TIMELINE_VIEW_TYPE, (leaf) =>
             deferWorkspaceView(new TimelineView(leaf, this, this.sceneManager), this.app.workspace, this.projectStartupReady, t('Loading...'))
         );
-        this.registerView(STORYLINE_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(STORYLINE_VIEW_TYPE, (leaf) =>
             deferWorkspaceView(new StorylineView(leaf, this, this.sceneManager), this.app.workspace, this.projectStartupReady, t('Loading...'))
         );
-        this.registerView(CHARACTER_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(CHARACTER_VIEW_TYPE, (leaf) =>
             new CharacterView(leaf, this, this.sceneManager)
         );
-        this.registerView(STATS_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(STATS_VIEW_TYPE, (leaf) =>
             new StatsView(leaf, this, this.sceneManager)
         );
-        this.registerView(LOCATION_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(LOCATION_VIEW_TYPE, (leaf) =>
             new LocationView(leaf, this, this.sceneManager)
         );
-        this.registerView(NAVIGATOR_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(NAVIGATOR_VIEW_TYPE, (leaf) =>
             this.startupDiagnostics.measure('navigator.construct', () =>
                 new NavigatorView(leaf, this, this.sceneManager))
         );
-        this.registerView(CODEX_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(CODEX_VIEW_TYPE, (leaf) =>
             new CodexView(leaf, this, this.sceneManager)
         );
-        this.registerView(SCENE_INSPECTOR_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(SCENE_INSPECTOR_VIEW_TYPE, (leaf) =>
             new SceneInspectorView(leaf, this, this.sceneManager)
         );
-        this.registerView(NOTES_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(NOTES_VIEW_TYPE, (leaf) =>
             new NotesView(leaf, this, this.sceneManager)
         );
-        this.registerView(SYNOPSIS_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(SYNOPSIS_VIEW_TYPE, (leaf) =>
             new SynopsisView(leaf, this, this.sceneManager)
         );
-        this.registerView(DETAILS_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(DETAILS_VIEW_TYPE, (leaf) =>
             new DetailsView(leaf, this, this.sceneManager)
         );
-        this.registerView(MANUSCRIPT_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(MANUSCRIPT_VIEW_TYPE, (leaf) =>
             deferWorkspaceView(new ManuscriptView(leaf, this, this.sceneManager), this.app.workspace, this.projectStartupReady, t('Loading...'))
         );
-        this.registerView(RESEARCH_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(RESEARCH_VIEW_TYPE, (leaf) =>
             new ResearchView(leaf, this, this.researchManager)
         );
-        this.registerView(WRITING_TRACKER_PANEL_TYPE, (leaf) =>
+        registerWritingLabView(WRITING_TRACKER_PANEL_TYPE, (leaf) =>
             new WritingTrackerPanel(leaf, this)
         );
-        this.registerView(WRITING_TRACKER_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(WRITING_TRACKER_VIEW_TYPE, (leaf) =>
             new WritingTrackerView(leaf, this)
         );
-        this.registerView(NCANVAS_LIBRARY_VIEW_TYPE, (leaf) =>
+        registerWritingLabView(NCANVAS_LIBRARY_VIEW_TYPE, (leaf) =>
             new NCanvasLibraryView(leaf, this)
         );
 
@@ -780,10 +800,7 @@ export default class SceneCardsPlugin extends Plugin {
             // (createPlotGridIfMissing removed — it caused race-condition overwrites)
 
             // Initialize writing tracker from per-project System/stats.json
-            if (has('writingTracker')) this.writingTracker.startSession(
-                this.getTrackedWordTotal(),
-                this.hasOpenFileForProject(),
-            );
+            if (has('writingTracker')) this.rebindWritingTrackerSession();
             this.writingTracker.setSprintDuration(
                 Math.max(1, this.settings.sprintDurationMinutes || 25) * 60_000,
             );
@@ -890,6 +907,11 @@ export default class SceneCardsPlugin extends Plugin {
         this.registerEvent(this.app.vault.on('modify', file => { if (file instanceof TFile) scheduleDocumentWords(file); }));
         this.registerEvent(this.app.vault.on('create', file => { if (file instanceof TFile) scheduleDocumentWords(file); }));
         this.registerEvent(this.app.vault.on('delete', file => { if (file instanceof TFile) scheduleDocumentWords(file); }));
+        this.registerEvent(this.app.vault.on('rename', () => {
+            const project = this.sceneManager.activeProject;
+            if (!project || this.capabilityService.isEnabled('scenes', project)) return;
+            void this.refreshTrackedDocumentWords().then(() => this.flushWritingTrackers());
+        }));
         this.register(() => {
             if (this.documentWordRefreshTimer !== null) window.clearTimeout(this.documentWordRefreshTimer);
         });
@@ -1365,10 +1387,10 @@ export default class SceneCardsPlugin extends Plugin {
                     for (const removed of result.removedProjectFiles) {
                         this._projectRuntimeCache.delete(normalizePath(removed));
                     }
+                    // Project-keyed UI, graph and canvas settings are cleared by
+                    // SceneManager for active and background project deletions.
+                    await this.saveData(this.settings);
                     if (result.activeProjectRemoved) {
-                        // Save only the cleared global pointer. saveSettings() also
-                        // writes System/* and could revive the deleted project tree.
-                        await this.saveData(this.settings);
                         let replacement: StoryLineProject | undefined;
                         for (const project of this.sceneManager.getProjects()) {
                             if (await this.app.vault.adapter.exists(project.filePath)) {
@@ -1441,13 +1463,6 @@ export default class SceneCardsPlugin extends Plugin {
                             && this.canRecordWritingChange(queuedProjectFile)
                             && previousSceneBody !== undefined
                             && nextSceneBody !== undefined) {
-                            const churn = countWordRevisionChurn(
-                                previousSceneBody,
-                                nextSceneBody,
-                                normalizeStoryLineLocale(this.sceneManager.getEffectiveLocale()),
-                                this.wordcountPrepareOptions(),
-                            );
-                            this.writingTracker.recordRevisionWords(churn, revisionChangedAt);
                             this.flushWritingTrackers(undefined, revisionChangedAt);
                         }
                         if (lightRefresh) debouncedViewsOnly();
@@ -1493,13 +1508,6 @@ export default class SceneCardsPlugin extends Plugin {
                                 const createdBody = this.sceneManager.getScene(file.path)?.body;
                                 if (this.canRecordWritingChange(queuedProjectFile)
                                     && createdBody !== undefined) {
-                                    const churn = countWordRevisionChurn(
-                                        '',
-                                        createdBody,
-                                        normalizeStoryLineLocale(this.sceneManager.getEffectiveLocale()),
-                                        this.wordcountPrepareOptions(),
-                                    );
-                                    this.writingTracker.recordRevisionWords(churn, createdAt);
                                     this.flushWritingTrackers(undefined, createdAt);
                                 }
                                 debouncedRefresh();
@@ -1562,13 +1570,6 @@ export default class SceneCardsPlugin extends Plugin {
                     if (queuedProjectFile
                         && this.canRecordWritingChange(queuedProjectFile)
                         && deletedSceneBody !== undefined) {
-                        const churn = countWordRevisionChurn(
-                            deletedSceneBody,
-                            '',
-                            normalizeStoryLineLocale(this.sceneManager.getEffectiveLocale()),
-                            this.wordcountPrepareOptions(),
-                        );
-                        this.writingTracker.recordRevisionWords(churn, deletedAt);
                         this.flushWritingTrackers(undefined, deletedAt);
                     }
                     debouncedRefresh();
@@ -2194,7 +2195,7 @@ export default class SceneCardsPlugin extends Plugin {
         // Only inject for files that belong to the active project
         const file = view.file ?? null;
         const sf = this.sceneManager?.activeProject?.sceneFolder;
-        const projectRoot = sf ? sf.replace(/\/Scenes$/, '') : undefined;
+        const projectRoot = sf ? projectRootFromSceneFolder(sf) : undefined;
         if (!file || !projectRoot || !file.path.startsWith(projectRoot)) { removeAll(); return; }
 
         // Get the CM6 EditorView
@@ -2516,6 +2517,26 @@ export default class SceneCardsPlugin extends Plugin {
         ) {
             this.settings.libraryUiByProject = {};
         }
+        if (
+            !this.settings.storyGraphRelationCategoriesByProject
+            || typeof this.settings.storyGraphRelationCategoriesByProject !== 'object'
+            || Array.isArray(this.settings.storyGraphRelationCategoriesByProject)
+        ) {
+            this.settings.storyGraphRelationCategoriesByProject = {};
+        } else {
+            this.settings.storyGraphRelationCategoriesByProject = Object.fromEntries(
+                Object.entries(this.settings.storyGraphRelationCategoriesByProject)
+                    .filter(([projectFile, categories]) => !!projectFile.trim() && Array.isArray(categories))
+                    .map(([projectFile, categories]) => [
+                        normalizePath(projectFile),
+                        categories.filter(category =>
+                            !!category
+                            && typeof category.id === 'string'
+                            && typeof category.label === 'string'
+                            && typeof category.color === 'string'),
+                    ]),
+            );
+        }
         const navigatorCollapsedSections = Array.isArray(this.settings.navigatorCollapsedSections)
             ? this.settings.navigatorCollapsedSections.filter(
                 (section): section is 'notes' | 'scenes' => section === 'notes' || section === 'scenes',
@@ -2601,9 +2622,6 @@ export default class SceneCardsPlugin extends Plugin {
             stickyNoteFontColorDark: this.settings.stickyNoteFontColorDark,
             uiTheme: this.settings.uiTheme,
         };
-        // Library categories used to live in global data.json and leaked across
-        // projects. Keep one seed for first-time per-project migration.
-        this._legacyLibraryCategoryDefaults = readLibraryCategorySettings(this.settings);
         this._legacyLibraryProfileLayoutDefaults = readLibraryProfileLayout(this.settings);
     }
 
@@ -3384,7 +3402,7 @@ export default class SceneCardsPlugin extends Plugin {
     getProjectBaseFolder(): string {
         const project = this.sceneManager?.activeProject ?? null;
         let base = project
-            ? project.sceneFolder.replace(/\\/g, '/').replace(/\/Scenes\/?$/, '')
+            ? projectRootFromSceneFolder(project.sceneFolder)
             : this.settings.storyLineRoot.replace(/\\/g, '/');
         base = normalizePath(base);
         // Obsidian adapter expects vault-relative paths. If a project somehow
@@ -3792,21 +3810,14 @@ export default class SceneCardsPlugin extends Plugin {
             : null;
         const migratingLibraryCategories = libraryEnabled && !storedLibraryCategories;
 
-        // Overlay per-project Library categories. First open after the
-        // global→per-project split seeds from the legacy data.json snapshot,
-        // then Library/ subfolders become the source of truth for tabs.
+        // Overlay per-project Library categories. Missing System files seed
+        // from this project's Library pack so a novel cannot leak Characters/
+        // into a literature project.
         let libraryCategoriesDirty = false;
         if (libraryEnabled && storedLibraryCategories) {
             applyLibraryCategorySettings(this, storedLibraryCategories);
         } else if (libraryEnabled) {
-            applyLibraryCategorySettings(this, {
-                enabledCategories: [...this._legacyLibraryCategoryDefaults.enabledCategories],
-                customCategories: this._legacyLibraryCategoryDefaults.customCategories.map(c => ({ ...c })),
-                categoryOrder: [...this._legacyLibraryCategoryDefaults.categoryOrder],
-                hiddenFixedCategories: [...this._legacyLibraryCategoryDefaults.hiddenFixedCategories],
-                deletedPresetCategories: [...this._legacyLibraryCategoryDefaults.deletedPresetCategories],
-                presetSeedVersion: this._legacyLibraryCategoryDefaults.presetSeedVersion || 0,
-            });
+            applyLibraryCategorySettings(this, initialLibraryCategorySettings(activeProject?.capabilities));
             libraryCategoriesDirty = true;
         }
         const presetsSeeded = libraryEnabled && seedStorylinePresetCategories(this);
@@ -3995,14 +4006,7 @@ export default class SceneCardsPlugin extends Plugin {
                     if (stored) {
                         applyLibraryCategorySettings(this, stored);
                     } else {
-                        applyLibraryCategorySettings(this, {
-                            enabledCategories: [...this._legacyLibraryCategoryDefaults.enabledCategories],
-                            customCategories: this._legacyLibraryCategoryDefaults.customCategories.map(c => ({ ...c })),
-                            categoryOrder: [...this._legacyLibraryCategoryDefaults.categoryOrder],
-                            hiddenFixedCategories: [...this._legacyLibraryCategoryDefaults.hiddenFixedCategories],
-                            deletedPresetCategories: [...this._legacyLibraryCategoryDefaults.deletedPresetCategories],
-                            presetSeedVersion: this._legacyLibraryCategoryDefaults.presetSeedVersion || 0,
-                        });
+                        applyLibraryCategorySettings(this, initialLibraryCategorySettings(project.capabilities));
                     }
                     const presetsSeeded = seedStorylinePresetCategories(this);
                     // Base aliases and orphan detection must use this project's
@@ -5872,10 +5876,12 @@ export default class SceneCardsPlugin extends Plugin {
 
     /** Refresh the Markdown source used by projects without the Scenes module. */
     async refreshTrackedDocumentWords(): Promise<number> {
+        const scan = ++this.documentWordScan;
         const project = this.sceneManager.activeProject;
         if (!project || this.capabilityService.isEnabled('scenes', project)) {
             this.documentWordTotal = 0;
             this.documentWordOwner = '';
+            this.documentWordTexts = [];
             return 0;
         }
         const owner = normalizePath(project.filePath);
@@ -5887,13 +5893,12 @@ export default class SceneCardsPlugin extends Plugin {
         this.documentSources.register(source);
         const documents = await source.listDocuments();
         const locale = normalizeStoryLineLocale(this.sceneManager.getEffectiveLocale());
-        const counts = await Promise.all(documents.map(async document => countWordRevisionChurn(
-            '', await source.readText(document), locale,
-            this.wordcountPrepareOptions(),
-        )));
-        if (normalizePath(this.sceneManager.activeProject?.filePath || '') !== owner) return this.documentWordTotal;
+        const texts = await Promise.all(documents.map(async document =>
+            [document.path, await source.readText(document)] as [string, string]));
+        if (scan !== this.documentWordScan || normalizePath(this.sceneManager.activeProject?.filePath || '') !== owner) return this.documentWordTotal;
         this.documentWordOwner = owner;
-        this.documentWordTotal = counts.reduce((sum, count) => sum + count, 0);
+        this.documentWordTexts = texts;
+        this.documentWordTotal = texts.reduce((sum, [, text]) => sum + wordcountTokens(text, locale, this.wordcountPrepareOptions()).length, 0);
         return this.documentWordTotal;
     }
 
@@ -5903,9 +5908,27 @@ export default class SceneCardsPlugin extends Plugin {
         if (project && !this.capabilityService.isEnabled('scenes', project)) {
             return this.documentWordOwner === normalizePath(project.filePath) ? this.documentWordTotal : 0;
         }
-        return this.sceneManager.queryService.getStatistics(
-            this.settings.excludeArcAnchorFromWordcount ?? true,
-        ).totalWords;
+        const locale = normalizeStoryLineLocale(this.sceneManager.getEffectiveLocale());
+        return this.writingInventory.countTotal(this.trackedSceneTexts(), locale, this.wordcountPrepareOptions());
+    }
+
+    private trackedSceneTexts(): Array<[string, string]> {
+        return this.sceneManager.getWorkbenchScenes()
+            .filter(scene => !scene.inactive && !scene.corkboardNote
+                && !((this.settings.excludeArcAnchorFromWordcount ?? true) && scene.arcAnchor))
+            .map(scene => [scene.filePath, scene.body ?? '']);
+    }
+
+    private updateWritingInventory() {
+        const project = this.sceneManager.activeProject;
+        const owner = normalizePath(project?.filePath || '');
+        const documents = project && !this.capabilityService.isEnabled('scenes', project)
+            ? this.documentWordTexts : this.trackedSceneTexts();
+        if (owner !== this.writingInventoryOwner) {
+            this.writingInventory.reset(); this.writingInventoryOwner = owner;
+        }
+        return this.writingInventory.update(documents,
+            normalizeStoryLineLocale(this.sceneManager.getEffectiveLocale()), this.wordcountPrepareOptions());
     }
 
     /** Whether any file-backed workspace leaf belongs to the selected project folder. */
@@ -5941,12 +5964,21 @@ export default class SceneCardsPlugin extends Plugin {
     async settleWritingTrackerChanges(): Promise<void> {
         const pending = [...this._writingRevisionQueues.values()];
         if (pending.length > 0) await Promise.allSettled(pending);
+        if (this.documentWordRefreshTimer !== null) {
+            window.clearTimeout(this.documentWordRefreshTimer);
+            this.documentWordRefreshTimer = null;
+        }
+        await this.refreshTrackedDocumentWords();
     }
 
     flushWritingTrackers(totalWords?: number, now = Date.now()): void {
         if (this._writingTrackerProjectSwitching) return;
+        if (!this.sceneManager.activeProject || !this.capabilityService.isEnabled('writingTracker')) return;
         try {
-            const words = totalWords ?? this.getTrackedWordTotal();
+            const change = this.updateWritingInventory();
+            this.writingTracker.rebaseInventory(change.inventoryDelta);
+            this.writingTracker.recordRevisionWords(change.revisions, now);
+            const words = totalWords ?? change.total;
             const delta = this.writingTracker.flushSession(words, now);
             this.globalWritingTracker?.recordFlush(delta, now);
             if (delta.words !== 0 || delta.revisions > 0) this.scheduleWritingTrackerSave();
@@ -6007,6 +6039,8 @@ export default class SceneCardsPlugin extends Plugin {
     /** After a project switch, baseline the session on that book's scene total. */
     rebindWritingTrackerSession(): void {
         try {
+            this.writingInventory.reset();
+            this.updateWritingInventory();
             const words = this.getTrackedWordTotal();
             this.writingTracker.startSession(words, this.hasOpenFileForProject());
             this._writingTrackerProjectSwitching = false;
@@ -6365,8 +6399,17 @@ export default class SceneCardsPlugin extends Plugin {
 
     /** Create a native .canvas board for a Library note (Character / Codex entry). */
     async createLibraryEntityBoard(entry: CreateLibraryEntityBoardEntry): Promise<string> {
+        const notePath = String(entry.notePath || entry.codexFile || '');
+        const projectFile = this.findProjectFileForVaultPath(notePath)
+            || this.sceneManager.activeProject?.filePath
+            || '';
+        const project = this.sceneManager.getProjects().find(item =>
+            normalizePath(item.filePath) === normalizePath(projectFile));
+        if (!project || !this.capabilityService.isEnabled('canvas', project)) {
+            throw new Error(t('Canvas is not enabled for this project.'));
+        }
         return this.libraryEntityBoard.createBoard(entry, {
-            fallbackProjectRoot: this.getProjectBaseFolder(),
+            fallbackProjectRoot: deriveProjectFoldersFromFilePath(project.filePath).baseFolder,
         });
     }
 
@@ -6724,6 +6767,7 @@ export default class SceneCardsPlugin extends Plugin {
             new Notice(t('No active project. Open a project first.'));
             return null;
         }
+        if (!this.isViewEnabled(NCANVAS_LIBRARY_VIEW_TYPE, project.filePath)) return null;
         const canvas = await this.ensureCanvasModuleReady();
         if (!canvas?.createSampleProjectAtPath) {
             new Notice(t('Narrative Canvas is still loading.'));
@@ -7397,7 +7441,7 @@ export default class SceneCardsPlugin extends Plugin {
         const canMigrate = (module: ProjectModuleId): boolean => !activeProject
             || this.capabilityService.isEnabled(module, activeProject);
         if (activeProject) {
-            const base = activeProject.sceneFolder.replace(/\\/g, '/').replace(/\/Scenes\/?$/, '');
+            const base = projectRootFromSceneFolder(activeProject.sceneFolder);
             sysFolder = `${base}/System`;
         } else if (raw.activeProjectFile) {
             // Derive from file path: NarrativeLab/Foo/Foo.md → NarrativeLab/Foo/System
@@ -7550,8 +7594,7 @@ export default class SceneCardsPlugin extends Plugin {
         ];
 
         for (const project of this.sceneManager.getProjects()) {
-            const baseFolder = project.sceneFolder
-                .replace(/\\/g, '/').replace(/\/Scenes\/?$/, '');
+            const baseFolder = projectRootFromSceneFolder(project.sceneFolder);
             const sysFolder = `${baseFolder}/System`;
 
             for (const filename of jsonFiles) {
@@ -7593,6 +7636,10 @@ export default class SceneCardsPlugin extends Plugin {
         const adapter = this.app.vault.adapter;
 
         for (const project of this.sceneManager.getProjects()) {
+            // NCanvas is an authored-canvas feature. Research organization
+            // boards have their own state and must not materialize a Canvas/
+            // folder merely because an old migration runs at startup.
+            if (!usesAuthoredCanvasFolder(project.capabilities)) continue;
             const folders = deriveProjectFoldersFromFilePath(project.filePath);
             const destFolder = normalizePath(folders.canvasFolder);
             const baseFolder = normalizePath(folders.baseFolder);
@@ -7747,6 +7794,7 @@ export default class SceneCardsPlugin extends Plugin {
             let projectPreset: ProjectPresetId = 'full-narrative';
             let selectedModules = new Set<ProjectModuleId>(PROJECT_PRESETS[projectPreset]);
             let wordCountProfile = capabilitiesForPreset(projectPreset).wordCountProfile;
+            let libraryPack = capabilitiesForPreset(projectPreset).libraryPack;
             let renderModuleChoices = (): void => undefined;
 
             new Setting(modulesPage)
@@ -7766,17 +7814,19 @@ export default class SceneCardsPlugin extends Plugin {
                         const capabilities = capabilitiesForPreset(projectPreset);
                         selectedModules = new Set(capabilities.modules);
                         wordCountProfile = capabilities.wordCountProfile;
+                        libraryPack = capabilities.libraryPack;
                         renderModuleChoices();
                     });
                 });
 
             const moduleChoices = modulesPage.createDiv('nl-project-module-choices');
             renderModuleChoices = () => {
-                renderProjectModulePicker(moduleChoices, selectedModules, next => {
+                renderProjectModulePicker(moduleChoices, selectedModules, (next, nextPack) => {
                     selectedModules = next;
+                    libraryPack = nextPack;
                     projectPreset = 'custom';
                     modal.contentEl.querySelector<HTMLSelectElement>('select')!.value = 'custom';
-                });
+                }, { libraryPack });
             };
             renderModuleChoices();
 
@@ -7855,11 +7905,12 @@ export default class SceneCardsPlugin extends Plugin {
                             const selectedCapabilities = {
                                 ...capabilitiesForPreset(projectPreset),
                                 preset: projectPreset,
-                                modules: resolveModuleDependencies([
+                                modules: applyLibraryPackToModules([
                                     ...selectedModules,
                                     ...(createAsSeries ? ['series' as const] : []),
-                                ]),
+                                ], libraryPack),
                                 wordCountProfile,
+                                libraryPack,
                             };
                             const project = createAsSeries
                                 ? await this.seriesManager.createSeriesWithNewProject(
@@ -7908,6 +7959,16 @@ export default class SceneCardsPlugin extends Plugin {
                     const list = reviewPage.createEl('ul');
                     for (const module of resolveModuleDependencies([...selectedModules, ...(createAsSeries ? ['series' as const] : [])])) {
                         list.createEl('li', { text: t(PROJECT_MODULE_LABELS[module]) });
+                    }
+                    if (selectedModules.has('library') && libraryPack !== 'none') {
+                        const packLabel = libraryPack === 'academic'
+                            ? 'Literature library'
+                            : libraryPack === 'narrative'
+                                ? 'Narrative library'
+                                : libraryPack === 'both'
+                                    ? 'Narrative and literature'
+                                    : 'Empty library';
+                        list.createEl('li', { text: t(packLabel) });
                     }
                     reviewPage.createEl('p', { text: t('Disabling a module keeps its files. Re-enable it to restore access.') });
                 }

@@ -72,6 +72,35 @@ function harness(stored={}) {
     return {service,files,disk,writes,events,emit,addFolder,edit,close};
 }
 const ledger='.obsidian/plugins/narrative-lab/folder-writing-tracker.json';
+
+test('disk reload retains completed and interrupted sprint records',async()=>{
+    const h=harness();const {file}=h.addFolder('Notes');
+    let restored;
+    try {
+        await h.service.select('Notes');
+        h.edit(file,'one two');
+        const tracker=h.service.current.tracker;
+        tracker.startSprint(2);h.edit(file,'one two three');tracker.stopSprint(3);
+        tracker.startSprint(3);h.edit(file,'one two three four');
+        await h.service.save();
+        restored=harness({[ledger]:h.disk.get(ledger)});restored.addFolder('Notes','one two three four');
+        await restored.service.load();
+        assert.deepEqual(restored.service.current.tracker.getSprintLog().map(e=>e.words),[1,1]);
+        assert.equal(restored.service.current.tracker.getTodayWords(),2);
+    } finally {await h.close();if(restored)await restored.close()}
+});
+
+test('save before editor-change counts an edit once',async()=>{
+    const h=harness();const {file}=h.addFolder('Notes');
+    try {
+        await h.service.select('Notes');h.edit(file,'one two');
+        h.service.editorText=()=> 'one two three';
+        await h.service.readInventory(file);
+        h.edit(file,'one two three');
+        assert.equal(h.service.current.tracker.getTodayWords(),1);
+        assert.equal(h.service.current.tracker.getTodayRevisions(),1);
+    } finally {await h.close()}
+});
 test('no folder configured means no scan, no source writes and no new ledger',async()=>{
     const h=harness();await h.service.load();assert.deepEqual(h.writes,[]);assert.equal(h.service.current,null);await h.close();
 });

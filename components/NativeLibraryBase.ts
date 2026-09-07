@@ -10,7 +10,7 @@ import {
     setIcon,
     stringifyYaml,
 } from 'obsidian';
-import { PRESET_CODEX_CATEGORIES } from '../models/Codex';
+import { PRESET_CODEX_CATEGORIES, shouldCreateLibraryCategoryFolder } from '../models/Codex';
 import { t } from '../utils/i18n';
 import {
     DEFAULT_BASES_FOLDER,
@@ -22,6 +22,7 @@ import {
     deriveProjectFoldersFromFilePath,
 } from '../models/StoryLineProject';
 import type SceneCardsPlugin from '../main';
+import { libraryCategoryPack, usesNarrativeLibraryCategories } from '../models/ProjectCapabilities';
 import { isExcalidrawFilePath } from '../services/EntityFileCache';
 import { getLibraryProfilePropertyOrder } from '../utils/libraryProfilePropertyOrder';
 import { attachTooltip } from './Tooltip';
@@ -379,12 +380,17 @@ function wireNativeBaseNewAction(
 }
 
 function getKnownLibraryCategoryIds(plugin: SceneCardsPlugin): string[] {
+    const pack = libraryCategoryPack(plugin.sceneManager.activeProject?.capabilities);
+    const packPreset = (id: string) =>
+        id === 'characters' || id === 'locations' || PRESET_CODEX_CATEGORIES.some(c => c.id === id);
     return collectReferencedLibraryCategoryIds({
-        alwaysCategoryIds: [ALL_LIBRARY_CATEGORY_ID, 'characters', 'locations'],
+        alwaysCategoryIds: [ALL_LIBRARY_CATEGORY_ID],
         optionalFixedCategoryIds: ['uncategorized'],
         hiddenFixedCategoryIds: plugin.settings.libraryHiddenFixedCategories || [],
-        enabledCategoryIds: plugin.settings.codexEnabledCategories || [],
-        mappedCategoryIds: Object.keys(plugin.sceneManager.activeProject?.libraryFolders || {}),
+        enabledCategoryIds: (plugin.settings.codexEnabledCategories || [])
+            .filter(id => !packPreset(id) || shouldCreateLibraryCategoryFolder(id, pack)),
+        mappedCategoryIds: Object.keys(plugin.sceneManager.activeProject?.libraryFolders || {})
+            .filter(id => shouldCreateLibraryCategoryFolder(id, pack)),
     });
 }
 
@@ -452,6 +458,7 @@ async function removeFolderIfEmpty(plugin: SceneCardsPlugin, folderPath: string)
 
 function getCategoryFolder(plugin: SceneCardsPlugin, categoryId: string): string | null {
     if (!plugin.sceneManager.activeProject) return null;
+    const pack = libraryCategoryPack(plugin.sceneManager.activeProject.capabilities);
     if (categoryId === ALL_LIBRARY_CATEGORY_ID) {
         return normalizePath(plugin.sceneManager.getCodexFolder());
     }
@@ -459,10 +466,16 @@ function getCategoryFolder(plugin: SceneCardsPlugin, categoryId: string): string
         return normalizePath(plugin.sceneManager.getCodexFolder());
     }
     if (categoryId === 'characters') {
+        if (!usesNarrativeLibraryCategories(pack)) return null;
         return normalizePath(plugin.sceneManager.getCharacterFolder());
     }
     if (categoryId === 'locations') {
+        if (!usesNarrativeLibraryCategories(pack)) return null;
         return normalizePath(plugin.sceneManager.getLocationFolder());
+    }
+    if (!shouldCreateLibraryCategoryFolder(categoryId, pack)
+        && PRESET_CODEX_CATEGORIES.some(category => category.id === categoryId)) {
+        return null;
     }
     const folderName = plugin.sceneManager.getLibraryFolderName(categoryId);
     return normalizePath(`${plugin.sceneManager.getCodexFolder()}/${folderName}`);

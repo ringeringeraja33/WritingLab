@@ -142,7 +142,7 @@ export class NCanvasLibraryView extends ProjectBoundItemView {
 
     getDisplayText(): string {
         const project = this.resolveProject();
-        return project ? `${project.title} · ${t('Node-based presentation canvas')}` : t('Node-based presentation canvas');
+        return project ? `${project.title} · ${t('Presentation')}` : t('Presentation');
     }
 
     getIcon(): string {
@@ -193,7 +193,7 @@ export class NCanvasLibraryView extends ProjectBoundItemView {
         const { canvasFolder, candidates } = this.plugin.getNcanvasPathsForProject(project);
         const heading = content.createDiv('nl-ncanvas-library-heading');
         const headingCopy = heading.createDiv('nl-ncanvas-library-heading-copy');
-        headingCopy.createEl('h2', { text: t('Node-based presentation canvas') });
+        headingCopy.createEl('h2', { text: t('Presentation') });
         headingCopy.createEl('p', {
             text: t('{count} canvases · stored in {folder}', {
                 count: candidates.length,

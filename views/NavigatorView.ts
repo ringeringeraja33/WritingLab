@@ -12,6 +12,7 @@ import { SceneManager } from '../services/SceneManager';
 import { MANUSCRIPT_VIEW_TYPE, NAVIGATOR_VIEW_TYPE } from '../constants';
 import { Scene, getStatusOrder, resolveStatusCfg } from '../models/Scene';
 import type { ProjectDraft, StoryLineProject } from '../models/StoryLineProject';
+import { usesThesesBinder } from '../models/ProjectCapabilities';
 import { RESEARCH_TYPE_CONFIG, type ResearchPost } from '../models/Research';
 import { t } from '../utils/i18n';
 import { showMenuSafely } from '../utils/obsidianMenu';
@@ -727,6 +728,42 @@ export class NavigatorView extends ItemView {
         }
     }
 
+    private usesThesesBinder(): boolean {
+        return usesThesesBinder(this.sceneManager.activeProject?.capabilities);
+    }
+
+    private scenesFolderLabel(): string {
+        return this.usesThesesBinder() ? t('Theses') : t('Scenes');
+    }
+
+    private createSceneLabel(): string {
+        return this.usesThesesBinder() ? t('Create new thesis') : t('Create new scene');
+    }
+
+    private emptyScenesLabel(): string {
+        return this.usesThesesBinder() ? t('No theses yet') : t('No scenes yet');
+    }
+
+    private noMatchingScenesLabel(): string {
+        return this.usesThesesBinder() ? t('No matching theses') : t('No matching scenes');
+    }
+
+    private plotlinesFolderLabel(): string {
+        return this.usesThesesBinder() ? t('Chapters') : t('Plotlines');
+    }
+
+    private newPlotlineLabel(): string {
+        return this.usesThesesBinder() ? t('New chapter') : t('New Plotline');
+    }
+
+    private renamePlotlineLabel(): string {
+        return this.usesThesesBinder() ? t('Rename chapter') : t('Rename plotline');
+    }
+
+    private deletePlotlineLabel(): string {
+        return this.usesThesesBinder() ? t('Delete chapter') : t('Delete plotline');
+    }
+
     private renderPlotlinesFolder(parent: HTMLElement, draftScenes: Scene[], folderDepth = 2): void {
         const tags = this.sceneManager.getPlotlines();
 
@@ -743,8 +780,8 @@ export class NavigatorView extends ItemView {
         };
 
         const label = this.plotlineFilter
-            ? `${t('Plotlines')}: ${this.plotlineFilter === UNASSIGNED_PLOTLINE_FILTER ? t('Unassigned') : this.plotlineFilter}`
-            : t('Plotlines');
+            ? `${this.plotlinesFolderLabel()}: ${this.plotlineFilter === UNASSIGNED_PLOTLINE_FILTER ? t('Unassigned') : this.plotlineFilter}`
+            : this.plotlinesFolderLabel();
         const plotNode = this.renderFolderHeader(parent, {
             key: 'plotlines',
             label,
@@ -755,7 +792,7 @@ export class NavigatorView extends ItemView {
             trailing: (el) => {
                 const add = el.createSpan('sl-nav-folder-action is-always');
                 setIcon(add, 'plus');
-                attachTooltip(add, t('New Plotline'));
+                attachTooltip(add, this.newPlotlineLabel());
                 add.addEventListener('click', (event) => {
                     event.stopPropagation();
                     this.promptNewPlotline();
@@ -853,13 +890,13 @@ export class NavigatorView extends ItemView {
             });
         }
         menu.addItem(item => {
-            item.setTitle(t('Rename plotline'));
+            item.setTitle(this.renamePlotlineLabel());
             item.setIcon('pencil');
             item.onClick(() => this.promptRenamePlotline(plotline));
         });
         menu.addSeparator();
         menu.addItem(item => {
-            item.setTitle(t('Delete plotline'));
+            item.setTitle(this.deletePlotlineLabel());
             item.setIcon('trash');
             item.onClick(() => this.confirmDeletePlotline(plotline, sceneCount));
         });
@@ -909,7 +946,7 @@ export class NavigatorView extends ItemView {
 
         const canvasNode = this.renderFolderHeader(parent, {
             key: 'canvas',
-            label: t('Node-based presentation canvas'),
+            label: t('Presentation'),
             icon: 'layout-dashboard',
             count: canvases.length,
             depth: folderDepth,
@@ -944,7 +981,7 @@ export class NavigatorView extends ItemView {
             icon.addClass('has-icon');
             setIcon(icon, 'layout-dashboard');
             row.createSpan({
-                text: path.split('/').pop()?.replace(/\.n(?:arrative)?canvas$/i, '') || t('Node-based presentation canvas'),
+                text: path.split('/').pop()?.replace(/\.n(?:arrative)?canvas$/i, '') || t('Presentation'),
                 cls: 'sl-nav-title',
             });
             row.addEventListener('click', () => {
@@ -993,10 +1030,10 @@ export class NavigatorView extends ItemView {
             scenes = this.sortScenes(scenes);
         }
 
-        // Always "Scenes" — draft variants are equal; switch via the layers menu when needed.
+        // Always "Scenes" / "Theses" — draft variants switch via the layers menu.
         const scenesNode = this.renderFolderHeader(parent, {
             key: 'scenes',
-            label: t('Scenes'),
+            label: this.scenesFolderLabel(),
             icon: 'file-text',
             count: scenes.length,
             depth: folderDepth,
@@ -1031,7 +1068,7 @@ export class NavigatorView extends ItemView {
                 });
                 const add = el.createSpan('sl-nav-folder-action is-always');
                 setIcon(add, 'plus');
-                attachTooltip(add, t('Create new scene'));
+                attachTooltip(add, this.createSceneLabel());
                 add.addEventListener('click', (ev) => {
                     ev.stopPropagation();
                     this.openNewScene();
@@ -1047,12 +1084,12 @@ export class NavigatorView extends ItemView {
         if (scenes.length === 0) {
             const empty = scenesNode.body.createDiv('sl-nav-empty');
             if (this.filterText || this.plotlineFilter) {
-                empty.textContent = t('No matching scenes');
+                empty.textContent = this.noMatchingScenesLabel();
             } else {
-                empty.createSpan({ text: t('No scenes yet') });
+                empty.createSpan({ text: this.emptyScenesLabel() });
                 const addLink = empty.createEl('button', {
                     cls: 'sl-nav-empty-action',
-                    text: t('Create new scene'),
+                    text: this.createSceneLabel(),
                     attr: { type: 'button' },
                 });
                 addLink.addEventListener('click', () => this.openNewScene());
@@ -1378,7 +1415,7 @@ export class NavigatorView extends ItemView {
     private showScenesFolderMenu(e: MouseEvent): void {
         const menu = new Menu();
         menu.addItem(item => {
-            item.setTitle(t('Create new scene'));
+            item.setTitle(this.createSceneLabel());
             item.setIcon('plus');
             item.onClick(() => this.openNewScene());
         });
@@ -1441,15 +1478,19 @@ export class NavigatorView extends ItemView {
     }
 
     private promptNewPlotline(): void {
-        new DraftNameModal(this.app, t('New Plotline'), '', async (name) => {
+        new DraftNameModal(this.app, this.newPlotlineLabel(), '', async (name) => {
             const normalized = this.toPlotlineSlug(name);
             if (!normalized) {
-                new Notice(t('Plotline name has no valid characters. Avoid ? # [ ] and similar symbols.'));
+                new Notice(this.usesThesesBinder()
+                    ? t('Chapter name has no valid characters. Avoid ? # [ ] and similar symbols.')
+                    : t('Plotline name has no valid characters. Avoid ? # [ ] and similar symbols.'));
                 return;
             }
             const created = await this.sceneManager.addPlotline(normalized);
             if (!created) {
-                new Notice(t('A plotline with this name already exists.'));
+                new Notice(this.usesThesesBinder()
+                    ? t('A chapter with this name already exists.')
+                    : t('A plotline with this name already exists.'));
                 return;
             }
             this.collapsedNodes.delete('plotlines');
@@ -1471,11 +1512,13 @@ export class NavigatorView extends ItemView {
     }
 
     private promptRenamePlotline(plotline: string): void {
-        new DraftNameModal(this.app, t('Rename Plotline'), plotline, async (name) => {
+        new DraftNameModal(this.app, this.usesThesesBinder() ? t('Rename chapter') : t('Rename Plotline'), plotline, async (name) => {
             const slug = this.toPlotlineSlug(name);
             if (!slug || slug === plotline) return;
             if (this.sceneManager.getPlotlines().includes(slug)) {
-                new Notice(t('A plotline with this name already exists.'));
+                new Notice(this.usesThesesBinder()
+                    ? t('A chapter with this name already exists.')
+                    : t('A plotline with this name already exists.'));
                 return;
             }
             const count = await this.sceneManager.renamePlotline(plotline, slug);
@@ -1488,12 +1531,16 @@ export class NavigatorView extends ItemView {
     private confirmDeletePlotline(plotline: string, sceneCount: number): void {
         const affected = Math.max(sceneCount, this.sceneManager.countScenesWithPlotline(plotline));
         const modal = new Modal(this.app);
-        modal.titleEl.setText(t('Delete Plotline'));
+        modal.titleEl.setText(this.usesThesesBinder() ? t('Delete chapter') : t('Delete Plotline'));
         modal.contentEl.createEl('p', {
-            text: t(
-                'Remove the tag "{tag}" from {count} scene(s)? The scenes themselves will not be deleted.',
-                { tag: plotline, count: affected },
-            ),
+            text: this.usesThesesBinder()
+                ? t('Remove the chapter "{tag}" from {count} thesis file(s)? The files themselves will not be deleted.', {
+                    tag: plotline, count: affected,
+                })
+                : t(
+                    'Remove the tag "{tag}" from {count} scene(s)? The scenes themselves will not be deleted.',
+                    { tag: plotline, count: affected },
+                ),
         });
 
         new Setting(modal.contentEl)

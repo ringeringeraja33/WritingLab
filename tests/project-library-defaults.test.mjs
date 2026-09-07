@@ -16,6 +16,9 @@ const {
     DEFAULT_PROJECT_LIBRARY_HIDDEN_CATEGORIES,
     deriveProjectFolders,
     deriveProjectFoldersFromFilePath,
+    manuscriptBinderFolderName,
+    projectRootFromSceneFolder,
+    resolveManuscriptBinderFolder,
 } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
 test('new projects bootstrap fixed folders before preset migration', () => {
@@ -35,19 +38,26 @@ test('first project load restores pack-specific Library presets once', async () 
     assert.match(source, /libraryPresetCategoriesForPack/);
     assert.match(source, /initialLibraryCategorySettings/);
     assert.match(source, /ensureLibraryPackCategories/);
-    assert.match(source, /pack === 'academic' \? ACADEMIC_CODEX_CATEGORIES/);
+    assert.match(source, /usesAcademicLibraryCategories\(pack\) \? ACADEMIC_CODEX_CATEGORIES/);
+    assert.match(source, /usesNarrativeLibraryCategories\(pack\) \? BUILTIN_CODEX_CATEGORIES/);
     assert.match(source, /if \(deleted\.has\(preset\.id\)\) return/);
     assert.match(source, /if \(options\.enable\) enabled\.add\(preset\.id\)/);
     assert.match(source, /hasProfilePage: true/);
     assert.match(source, /hiddenFixedCategories: pack === 'academic'/);
-    assert.match(source, /filter\(id => !hiddenFixed.has\(id\)\)/);
+    assert.match(source, /shouldCreateLibraryCategoryFolder/);
+    assert.match(source, /filterLibraryFoldersForPack/);
+    assert.match(source, /shouldCreateLibraryCategoryFolder\(id, pack\) && !hiddenFixed.has\(id\)/);
     assert.match(codex, /id: 'literature'/);
     assert.match(codex, /id: 'claims'/);
     assert.match(codex, /id: 'arguments'/);
     assert.match(codex, /id: 'facts'/);
     assert.match(sceneManager, /JSON.stringify\(initialLibraryCategorySettings\(capabilities\)/);
     assert.match(sceneManager, /defaultLibraryFoldersForCapabilities\(capabilities\)/);
+    assert.match(sceneManager, /filterLibraryFoldersForPack/);
+    assert.match(sceneManager, /usesAuthoredCanvasFolder\(capabilities\)/);
     assert.match(main, /seedStorylinePresetCategories\(this\)/);
+    assert.match(main, /applyLibraryCategorySettings\(this, initialLibraryCategorySettings/);
+    assert.doesNotMatch(main, /_legacyLibraryCategoryDefaults\.enabledCategories/);
     assert.match(main, /\(presetsSeeded \|\| migratingLibraryCategories\) \? \{ createMissingRegistered: true \} : \{\}/);
     assert.match(main, /\(presetsSeeded \|\| !stored\) \? \{ createMissingRegistered: true \} : \{\}/);
 });
@@ -85,6 +95,36 @@ test('Library categories always have a profile page and no optional toggle', asy
     assert.match(switcher, /makeProfileCodexCategory\(c\.id, c\.label, c\.icon\)/);
     assert.doesNotMatch(switcher, /c\.hasProfilePage/);
     assert.doesNotMatch(main, /cc\.hasProfilePage/);
+});
+
+test('academic Library categories stay on Browse without a Profiles archive', async () => {
+    const result = await build({
+        entryPoints: ['models/Codex.ts'],
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        write: false,
+    });
+    const { libraryCategoryHasProfilePage, shouldCreateLibraryCategoryFolder } = await import(
+        `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`
+    );
+    for (const id of ['literature', 'claims', 'arguments', 'facts']) {
+        assert.equal(libraryCategoryHasProfilePage(id), false, id);
+        assert.equal(shouldCreateLibraryCategoryFolder(id, 'academic'), true, id);
+        assert.equal(shouldCreateLibraryCategoryFolder(id, 'narrative'), false, id);
+    }
+    for (const id of ['items', 'characters', 'locations']) {
+        assert.equal(shouldCreateLibraryCategoryFolder(id, 'academic'), false, id);
+        assert.equal(shouldCreateLibraryCategoryFolder(id, 'narrative'), true, id);
+        assert.equal(shouldCreateLibraryCategoryFolder(id, 'both'), true, id);
+    }
+    for (const id of ['items', 'characters', 'locations', 'uncategorized', 'custom-world']) {
+        assert.equal(libraryCategoryHasProfilePage(id), true, id);
+    }
+    const view = await readFile('views/CodexView.ts', 'utf8');
+    assert.match(view, /if \(!libraryCategoryHasProfilePage\(this\.activeCategory\)\) return/);
+    assert.match(view, /libraryCategoryHasProfilePage\(this\.activeCategory\) \? entry\.filePath : null/);
+    assert.match(view, /libraryCategoryHasProfilePage\(this\.activeCategory\) \? 'profile' : 'browse'/);
 });
 
 test('Library search and filter controls start closed', async () => {
@@ -133,7 +173,44 @@ test('new project paths use Library rather than Codex', () => {
     assert.equal(fromTitle.codexFolder, 'Writing/Book/Library');
     assert.equal(fromTitle.characterFolder, 'Writing/Book/Library/Characters');
     assert.equal(fromTitle.locationFolder, 'Writing/Book/Library/Locations');
+    assert.equal(fromTitle.sceneFolder, 'Writing/Book/Scenes');
 
     const fromFile = deriveProjectFoldersFromFilePath('Writing/Book/Book.md');
     assert.equal(fromFile.codexFolder, 'Writing/Book/Library');
+});
+
+test('research papers use a Theses binder instead of Scenes', async () => {
+    const paper = { version: 2, preset: 'research-paper', modules: ['scenes'], wordCountProfile: 'academic' };
+    assert.equal(manuscriptBinderFolderName(paper), 'Theses');
+    assert.equal(deriveProjectFolders('Writing', 'Paper', paper).sceneFolder, 'Writing/Paper/Theses');
+    assert.equal(deriveProjectFoldersFromFilePath('Writing/Paper/Paper.md', paper).sceneFolder, 'Writing/Paper/Theses');
+    assert.equal(projectRootFromSceneFolder('Writing/Paper/Theses'), 'Writing/Paper');
+    assert.equal(resolveManuscriptBinderFolder('Writing/Paper', paper, () => false), 'Writing/Paper/Theses');
+    assert.equal(resolveManuscriptBinderFolder('Writing/Paper', paper, path => path.endsWith('/Scenes')), 'Writing/Paper/Scenes');
+
+    const [navigatorView, sceneManager, modeBar] = await Promise.all([
+        readFile('views/NavigatorView.ts', 'utf8'),
+        readFile('services/SceneManager.ts', 'utf8'),
+        readFile('components/LibraryModeBar.ts', 'utf8'),
+    ]);
+    assert.match(navigatorView, /this\.usesThesesBinder\(\) \? t\('Theses'\) : t\('Scenes'\)/);
+    assert.match(navigatorView, /this\.usesThesesBinder\(\) \? t\('Chapters'\) : t\('Plotlines'\)/);
+    assert.match(sceneManager, /ensureProjectModuleStorage\(project, capabilities\)/);
+    assert.match(sceneManager, /'Theses'/);
+    assert.match(modeBar, /resolveProjectContentPolicy\(plugin\.capabilityService\.get\(project\)\)\.narrativeScenes/);
+    assert.match(sceneManager, /usesThesesBinder\(capabilities\)/);
+});
+
+test('flat canvas state is internal and cannot create the authored Canvas folder', async () => {
+    const [corkboard, sceneManager, main, boardAction] = await Promise.all([
+        readFile('services/CorkboardCanvasService.ts', 'utf8'),
+        readFile('services/SceneManager.ts', 'utf8'),
+        readFile('main.ts', 'utf8'),
+        readFile('components/LibraryEntityBoardAction.ts', 'utf8'),
+    ]);
+    assert.match(corkboard, /baseFolder}\/System\/\$\{corkboardCanvasFileNameForProject/);
+    assert.doesNotMatch(sceneManager, /corkboardCanvasPathForProject/);
+    assert.match(main, /if \(!usesAuthoredCanvasFolder\(project\.capabilities\)\) continue/);
+    assert.match(main, /!this\.capabilityService\.isEnabled\('canvas', project\)/);
+    assert.match(boardAction, /!opts\.plugin\.capabilityService\.isEnabled\('canvas', project\)/);
 });

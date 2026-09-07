@@ -4,6 +4,7 @@ import { SeriesMetadata, StoryLineProject, deriveProjectFoldersFromFilePath } fr
 import { t } from '../utils/i18n';
 import { isProjectScopedLibraryArtifact, isUntrackedLibraryNoise, vaultRelativeFolderPath } from '../utils/vaultFolders';
 import type { ProjectCapabilities } from '../models/ProjectCapabilities';
+import { libraryCategoryPack, usesNarrativeLibraryCategories } from '../models/ProjectCapabilities';
 
 interface LibraryTransferJournal {
     movedFiles: Array<{ from: string; to: string }>;
@@ -154,9 +155,7 @@ export class SeriesManager {
         let project: StoryLineProject | null = null;
         try {
             const seriesLibrary = normalizePath(`${seriesFolder}/Library`);
-            await this.ensureFolder(seriesLibrary);
-            await this.ensureFolder(normalizePath(`${seriesLibrary}/Characters`));
-            await this.ensureFolder(normalizePath(`${seriesLibrary}/Locations`));
+            await this.ensureSeriesLibrary(seriesLibrary, capabilities);
 
             project = await this.plugin.sceneManager.createProject(
                 projectTitle,
@@ -264,9 +263,7 @@ export class SeriesManager {
             }
 
             const seriesCodexFolder = normalizePath(`${seriesFolder}/Library`);
-            await this.ensureFolder(seriesCodexFolder);
-            await this.ensureFolder(normalizePath(`${seriesCodexFolder}/Characters`));
-            await this.ensureFolder(normalizePath(`${seriesCodexFolder}/Locations`));
+            await this.ensureSeriesLibrary(seriesCodexFolder, project.capabilities);
 
             const bookCodexFolder = this.resolveExistingLibraryFolder(targetBookFolder);
             if (await adapter.exists(bookCodexFolder)) {
@@ -357,9 +354,7 @@ export class SeriesManager {
             project = await this.plugin.sceneManager.createProject(projectTitle, description, seriesFolder);
 
             const seriesCodexFolder = this.resolveExistingLibraryFolder(seriesFolder);
-            await this.ensureFolder(seriesCodexFolder);
-            await this.ensureFolder(normalizePath(`${seriesCodexFolder}/Characters`));
-            await this.ensureFolder(normalizePath(`${seriesCodexFolder}/Locations`));
+            await this.ensureSeriesLibrary(seriesCodexFolder, project.capabilities);
 
             if (!meta.bookOrder.includes(safeTitle)) meta.bookOrder.push(safeTitle);
             await this.saveSeriesMetadata(seriesFolder, meta);
@@ -438,9 +433,7 @@ export class SeriesManager {
             }
 
             const seriesCodexFolder = this.resolveExistingLibraryFolder(seriesFolder);
-            await this.ensureFolder(seriesCodexFolder);
-            await this.ensureFolder(normalizePath(`${seriesCodexFolder}/Characters`));
-            await this.ensureFolder(normalizePath(`${seriesCodexFolder}/Locations`));
+            await this.ensureSeriesLibrary(seriesCodexFolder, project.capabilities);
 
             const bookCodexFolder = this.resolveExistingLibraryFolder(targetBookFolder);
             if (await adapter.exists(bookCodexFolder)) {
@@ -781,7 +774,7 @@ export class SeriesManager {
                 // Hidden/system folders (especially Obsidian's `.trash`) are
                 // not live series sources and may contain deleted series.json files.
                 if (!name.startsWith('.')
-                    && !['Library', 'Codex', 'Scenes', 'System', 'Attachments', 'NCanvas', 'Canvas', 'Bases', 'Notes', 'Research', 'Archived', 'Archive'].includes(name)) {
+                    && !['Library', 'Codex', 'Scenes', 'Theses', 'System', 'Attachments', 'NCanvas', 'Canvas', 'Bases', 'Notes', 'Research', 'Archived', 'Archive'].includes(name)) {
                     await scan(normalizePath(subfolder));
                 }
             }
@@ -1200,6 +1193,13 @@ export class SeriesManager {
                 await this.app.vault.adapter.remove(path);
             }
         }
+    }
+
+    private async ensureSeriesLibrary(libraryRoot: string, capabilities?: ProjectCapabilities): Promise<void> {
+        await this.ensureFolder(libraryRoot);
+        if (!usesNarrativeLibraryCategories(libraryCategoryPack(capabilities))) return;
+        await this.ensureFolder(normalizePath(`${libraryRoot}/Characters`));
+        await this.ensureFolder(normalizePath(`${libraryRoot}/Locations`));
     }
 
     private async ensureFolder(folderPath: string): Promise<void> {

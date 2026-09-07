@@ -661,6 +661,7 @@ test('custom profile categories expose a working profile overview mode', () => {
     assert.match(libraryModeBar, /data-mode': 'profile'/);
     assert.match(codexView, /setLibraryContentMode\(this\.plugin, 'profile', this\.getBoundProjectFile\(\)\)/);
     assert.match(codexView, /showLayoutToggle: false/);
+    assert.match(codexView, /if \(!libraryCategoryHasProfilePage\(this\.activeCategory\)\) return/);
     assert.match(codexView, /this\.isProfileOverviewMode\(\)\s*\? 'cards'/);
 });
 
@@ -723,7 +724,9 @@ test('Story Graph is the first peer tab while profile and browse modes stay in t
     assert.match(libraryBrowseLayout, /library-browse-native-actions[\s\S]*?renderTrailingActions\(trailing\)/);
     assert.match(characterView, /renderLibraryModeToolbar\([\s\S]*?renderCharacterOverviewModes\(actions\)[\s\S]*?renderOpenNativeLibraryBaseAction\(actions, this\.plugin, 'characters'\)/);
     assert.match(locationView, /renderLibraryModeToolbar\([\s\S]*?renderLocationOverviewModes\(actions\)[\s\S]*?renderOpenNativeLibraryBaseAction\(actions, this\.plugin, 'locations'\)/);
-    assert.match(codexView, /renderLibraryModeToolbar\([\s\S]*?renderOverviewModes\(actions\)[\s\S]*?renderOpenNativeLibraryBaseAction/);
+    assert.match(codexView, /nativeBaseInCategoryRow[\s\S]*?renderAfterModeActions:[\s\S]*?renderOpenNativeLibraryBaseAction/);
+    assert.match(codexView, /if \(libraryCategoryHasProfilePage\(this\.activeCategory\)\) \{\s*renderLibraryModeToolbar/);
+    assert.match(codexView, /single icon never creates an otherwise empty content toolbar/);
     assert.doesNotMatch(characterView, /story-graph' && !isMobile\) \{\s*renderLibraryModeToolbar/);
     assert.doesNotMatch(locationView, /story-graph' && !isMobile\) \{\s*renderLibraryModeToolbar/);
     assert.doesNotMatch(codexView, /'story-graph' && !isMobile\) \{\s*renderLibraryModeToolbar/);
@@ -839,8 +842,8 @@ test('Story Graph opens native Graph beside it instead of merging canvases', () 
     assert.match(libraryModeBar, /function projectNativeGraphFolders/);
     assert.match(libraryModeBar, /getCodexFolder\(\)/);
     assert.match(libraryModeBar, /getSceneFolder\(\)/);
-    assert.match(libraryModeBar, /buildProjectGraphQuery\(projectNativeGraphFolders\(plugin\)\)/);
-    assert.match(libraryModeBar, /buildProjectFileGraphQuery\(projectNativeGraphFolders\(plugin\), filePath\)/);
+    assert.match(libraryModeBar, /buildProjectGraphQuery\(projectNativeGraphFolders\(plugin, projectFile\)\)/);
+    assert.match(libraryModeBar, /buildProjectFileGraphQuery\(projectNativeGraphFolders\(plugin, projectFile\), filePath\)/);
     assert.match(libraryModeBar, /openNativeGraphWithQuery\(plugin\.app, query, \{ reveal: true \}\)/);
     assert.match(libraryModeBar, /openNativeGraphWithQuery\(plugin\.app, query, \{ reveal \}\)/);
     assert.doesNotMatch(storyGraph, /setViewState\(\{ type: 'graph'/);
@@ -857,7 +860,7 @@ test('project scan keeps the previous list until the new map is ready', () => {
 });
 
 test('startup overlaps independent project reads and defers Narrative Canvas', () => {
-    assert.match(sceneManager, /Promise\.all\(\[\s*moduleEnabled\(capabilities, 'scenes'\) \? this\.scanFolderAdapter\(sceneFolder\).*\s*moduleEnabled\(capabilities, 'notes'\) \? this\.scanFolderAdapter\(notesFolder\)/s);
+    assert.match(sceneManager, /Promise\.all\(\[\s*moduleEnabled\(capabilities, 'scenes'\)[\s\S]*scanFolderAdapter\(sceneFolder\)[\s\S]*moduleEnabled\(capabilities, 'notes'\) \? this\.scanFolderAdapter\(notesFolder\)/s);
     assert.match(mainTs, /Promise\.all\(\[\s*has\('plotlines'\).*this\.plotlineManager\.ensureSeeded\(\).*\s*has\('library'\).*this\.fieldTemplates\.load\(\).*\s*has\('structure'\).*this\.templateCenter\.load\(\).*\s*has\('board'\).*this\.sceneManager\.loadCorkboardPositions\(\)/s);
     assert.match(mainTs, /locationManager\.loadAll\(locFolder\)/);
     assert.match(mainTs, /characterManager\.loadCharacters\(charFolder\)/);

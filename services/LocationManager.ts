@@ -507,6 +507,9 @@ export class LocationManager {
     }
 
     private async ensureFolder(folderPath: string): Promise<void> {
+        if (!normalizePath(folderPath)) {
+            throw new Error('Location storage is not enabled for this project.');
+        }
         await ensureVaultFolder(this.app, folderPath);
     }
 }

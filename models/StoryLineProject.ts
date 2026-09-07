@@ -1,6 +1,6 @@
 
 import { FilterPreset } from './Scene';
-import type { ProjectCapabilities } from './ProjectCapabilities';
+import { usesThesesBinder, type ProjectCapabilities } from './ProjectCapabilities';
 
 /**
  * Represents a NarrativeLab project manifest.
@@ -9,6 +9,7 @@ import type { ProjectCapabilities } from './ProjectCapabilities';
  * its own project folder and owns a subfolder tree:
  *
  *   Writing/My Novel/Scenes/          (writer-facing)
+ *   Writing/Paper/Theses/             (research-paper / literature-review)
  *   Writing/My Novel/Library/…        (writer-facing)
  *   Writing/My Novel/Notes/…          (writer-facing)
  *   Writing/My Novel/Canvas/          (authored .ncanvas boards)
@@ -165,13 +166,35 @@ export const DEFAULT_PROJECT_LIBRARY_FOLDERS: Readonly<Record<'characters' | 'lo
 /** Internal catch-all stays available but is hidden in a new project's tab bar. */
 export const DEFAULT_PROJECT_LIBRARY_HIDDEN_CATEGORIES: readonly string[] = Object.freeze(['uncategorized']);
 
-/**
- * Build derived folder paths from a root folder and project title.
- */
-export function deriveProjectFolders(
-    rootFolder: string,
-    title: string
-): {
+export const SCENES_FOLDER_NAME = 'Scenes';
+export const THESES_FOLDER_NAME = 'Theses';
+
+export function manuscriptBinderFolderName(capabilities?: ProjectCapabilities): string {
+    return usesThesesBinder(capabilities) ? THESES_FOLDER_NAME : SCENES_FOLDER_NAME;
+}
+
+/** Parent of Scenes/ or Theses/. */
+export function projectRootFromSceneFolder(sceneFolder: string): string {
+    return sceneFolder.replace(/\\/g, '/').replace(/\/(Scenes|Theses)\/?$/i, '');
+}
+
+export function resolveManuscriptBinderFolder(
+    baseFolder: string,
+    capabilities: ProjectCapabilities | undefined,
+    folderExists: (path: string) => boolean,
+): string {
+    const base = baseFolder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    const scenes = `${base}/${SCENES_FOLDER_NAME}`;
+    const theses = `${base}/${THESES_FOLDER_NAME}`;
+    if (usesThesesBinder(capabilities)) {
+        if (folderExists(scenes) && !folderExists(theses)) return scenes;
+        return theses;
+    }
+    if (folderExists(theses) && !folderExists(scenes)) return theses;
+    return scenes;
+}
+
+type DerivedProjectFolders = {
     baseFolder: string;
     sceneFolder: string;
     characterFolder: string;
@@ -184,13 +207,12 @@ export function deriveProjectFolders(
     canvasFolder: string;
     basesFolder: string;
     attachmentFolder: string;
-} {
-    const base = [rootFolder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''), title]
-        .filter(Boolean)
-        .join('/');
+};
+
+function foldersForBase(base: string, capabilities?: ProjectCapabilities): DerivedProjectFolders {
     return {
         baseFolder: base,
-        sceneFolder: `${base}/Scenes`,
+        sceneFolder: `${base}/${manuscriptBinderFolderName(capabilities)}`,
         characterFolder: `${base}/Library/Characters`,
         locationFolder: `${base}/Library/Locations`,
         codexFolder: `${base}/Library`,
@@ -205,6 +227,20 @@ export function deriveProjectFolders(
 }
 
 /**
+ * Build derived folder paths from a root folder and project title.
+ */
+export function deriveProjectFolders(
+    rootFolder: string,
+    title: string,
+    capabilities?: ProjectCapabilities,
+): DerivedProjectFolders {
+    const base = [rootFolder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''), title]
+        .filter(Boolean)
+        .join('/');
+    return foldersForBase(base, capabilities);
+}
+
+/**
  * Derive project folder paths from the project .md file's actual location.
  * Works for projects anywhere in the vault — not tied to storyLineRoot.
  *
@@ -213,21 +249,9 @@ export function deriveProjectFolders(
  *  - Legacy:      `Any/Path/MyNovel.md`           → base = `Any/Path/MyNovel`
  */
 export function deriveProjectFoldersFromFilePath(
-    filePath: string
-): {
-    baseFolder: string;
-    sceneFolder: string;
-    characterFolder: string;
-    locationFolder: string;
-    codexFolder: string;
-    notesFolder: string;
-    sceneNotesFolder: string;
-    archiveFolder: string;
-    researchFolder: string;
-    canvasFolder: string;
-    basesFolder: string;
-    attachmentFolder: string;
-} {
+    filePath: string,
+    capabilities?: ProjectCapabilities,
+): DerivedProjectFolders {
     const lastSlash = filePath.lastIndexOf('/');
     const parentDir = lastSlash >= 0 ? filePath.substring(0, lastSlash) : '';
     const basename = (filePath.split('/').pop() ?? '').replace(/\.md$/i, '');
@@ -237,18 +261,5 @@ export function deriveProjectFoldersFromFilePath(
     const baseFolder = (parentName === basename)
         ? parentDir
         : [parentDir, basename].filter(Boolean).join('/');
-    return {
-        baseFolder,
-        sceneFolder: `${baseFolder}/Scenes`,
-        characterFolder: `${baseFolder}/Library/Characters`,
-        locationFolder: `${baseFolder}/Library/Locations`,
-        codexFolder: `${baseFolder}/Library`,
-        notesFolder: `${baseFolder}/Notes`,
-        sceneNotesFolder: `${baseFolder}/SceneNotes`,
-        archiveFolder: `${baseFolder}/Archive`,
-        researchFolder: `${baseFolder}/Research`,
-        canvasFolder: `${baseFolder}/${DEFAULT_CANVAS_FOLDER}`,
-        basesFolder: `${baseFolder}/${DEFAULT_BASES_FOLDER}`,
-        attachmentFolder: `${baseFolder}/${DEFAULT_ATTACHMENT_FOLDER}`,
-    };
+    return foldersForBase(baseFolder, capabilities);
 }

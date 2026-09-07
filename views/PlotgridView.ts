@@ -915,7 +915,7 @@ export class PlotgridView extends ProjectBoundItemView {
             minHeight: '0',
             overflow: 'hidden',
         });
-        const toolbar = this.wrapperEl.createDiv('story-line-toolbar plot-grid-toolbar');
+        const toolbar = this.wrapperEl.createDiv('story-line-toolbar plot-grid-toolbar sl-two-row-toolbar');
         toolbar.setCssStyles({ flex: '0 0 auto' });
 
         // Work row containing the Univer sheet.
@@ -1157,79 +1157,8 @@ export class PlotgridView extends ProjectBoundItemView {
         // (including a `Bitcoin` icon) into `main.js`, which tripped the
         // Obsidian plugin reviewer's crypto-wallet heuristic.
 
-        // Ensure icon-only appearance: remove any visible button edges and set icon size
-        try {
-            const btns = toolbar.querySelectorAll('.icon-button');
-            btns.forEach((b) => {
-                const btn = b as HTMLElement;
-                btn.setCssStyles({
-                    background: 'transparent',
-                    backgroundColor: 'transparent',
-                    backgroundImage: 'none',
-                    border: 'none',
-                    boxShadow: 'none',
-                    outline: 'none',
-                    minWidth: '0',
-                    width: 'auto',
-                    height: 'auto',
-                    padding: '2px',
-                    borderRadius: '0',
-                });
-                // set the inner lucide holder and svg size
-                const holder = btn.querySelector('i[data-lucide]') as HTMLElement | null;
-                if (holder) {
-                    holder.setCssStyles({
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'transparent',
-                        transition: 'transform 120ms ease, background-color 120ms ease, opacity 120ms ease',
-                    });
-                    const svg = holder.querySelector('svg') as SVGElement | null;
-                    if (svg) {
-                        // Do not hard-set width/height — allow the app's icon sizing to control pixel dimensions so it matches BoardView
-                        const svgEl = svg as unknown as { setCssStyles: (s: Record<string, string>) => void };
-                        svgEl.setCssStyles({ transition: 'transform 120ms ease, opacity 120ms ease' });
-                        svgEl.setCssStyles({ opacity: '0.95' });
-                        svgEl.setCssStyles({ display: 'block' });
-                    }
-                }
-                // add hover and active feedback for each button
-                btn.addEventListener('mouseenter', () => {
-                    try {
-                        btn.setCssStyles({
-                            backgroundColor: 'var(--sl-hover-overlay)',
-                            borderRadius: '6px',
-                        });
-                        const holder = btn.querySelector('i[data-lucide]') as HTMLElement | null;
-                        if (holder) holder.setCssStyles({ transform: 'scale(1.08)' });
-                    } catch (e) { /* cosmetic, safe to ignore */ }
-                });
-                btn.addEventListener('mouseleave', () => {
-                    try {
-                        btn.setCssStyles({
-                            background: 'transparent',
-                            backgroundColor: 'transparent',
-                            borderRadius: '0',
-                        });
-                        const holder = btn.querySelector('i[data-lucide]') as HTMLElement | null;
-                        if (holder) holder.setCssStyles({ transform: '' });
-                    } catch (e) { /* cosmetic, safe to ignore */ }
-                });
-                btn.addEventListener('mousedown', () => {
-                    try {
-                        const holder = btn.querySelector('i[data-lucide]') as HTMLElement | null;
-                        if (holder) holder.setCssStyles({ transform: 'scale(0.96)' });
-                    } catch (e) { /* cosmetic, safe to ignore */ }
-                });
-                btn.addEventListener('mouseup', () => {
-                    try {
-                        const holder = btn.querySelector('i[data-lucide]') as HTMLElement | null;
-                        if (holder) holder.setCssStyles({ transform: '' });
-                    } catch (e) { /* cosmetic, safe to ignore */ }
-                });
-            });
-        } catch (e) { /* safe no-op */ }
+        // Icon geometry and interaction feedback are shared with the other
+        // NarrativeLab two-row toolbars in styles.css.
     }
 
     private setZoom(z: number) {

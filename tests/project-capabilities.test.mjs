@@ -20,10 +20,10 @@ test('legacy projects retain every module', () => {
 
 test('research paper excludes narrative services but keeps research tools', () => {
     const preset = capabilities.capabilitiesForPreset('research-paper');
-    for (const module of ['manuscript', 'outline', 'library', 'table', 'flatCanvas', 'columnBoard', 'research', 'citations']) {
+    for (const module of ['manuscript', 'outline', 'library', 'table', 'flatCanvas', 'columnBoard', 'research', 'scenes']) {
         assert.ok(preset.modules.includes(module), module);
     }
-    for (const module of ['scenes', 'board', 'plotlines', 'timeline', 'characters', 'locations', 'canvas']) {
+    for (const module of ['board', 'plotlines', 'timeline', 'characters', 'locations', 'canvas']) {
         assert.ok(!preset.modules.includes(module), module);
     }
     assert.equal(preset.wordCountProfile, 'academic');
@@ -32,7 +32,80 @@ test('research paper excludes narrative services but keeps research tools', () =
     assert.equal(capabilities.libraryCategoryPack(preset), 'academic');
     assert.equal(capabilities.libraryCategoryPack(capabilities.capabilitiesForPreset('literature-review')), 'academic');
     assert.equal(capabilities.libraryCategoryPack(capabilities.capabilitiesForPreset('novel')), 'narrative');
-    assert.equal(capabilities.libraryCategoryPack(capabilities.capabilitiesForPreset('essay')), 'academic');
+    assert.equal(capabilities.libraryCategoryPack(capabilities.capabilitiesForPreset('essay')), 'none');
+    assert.equal(capabilities.capabilitiesForPreset('custom').libraryPack, 'none');
+    const customScenes = capabilities.normalizeProjectCapabilities({
+        version: 2, preset: 'custom',
+        modules: ['manuscript', 'library', 'scenes'],
+    });
+    assert.equal(customScenes.libraryPack, 'academic');
+    const mixed = capabilities.normalizeProjectCapabilities({
+        version: 2, preset: 'custom',
+        modules: ['library', 'characters', 'locations'],
+        libraryPack: 'both',
+    });
+    assert.equal(mixed.libraryPack, 'both');
+    assert.equal(capabilities.libraryPackFromSelection(['library', 'characters'], true), 'both');
+    assert.equal(capabilities.libraryPackFromSelection(['library'], true), 'academic');
+    assert.equal(capabilities.libraryPackFromSelection(['library', 'characters'], false), 'narrative');
+    assert.deepEqual(
+        capabilities.applyLibraryPackToModules(['library', 'characters', 'locations'], 'academic')
+            .filter(id => id === 'library' || id === 'characters' || id === 'locations'),
+        ['library'],
+    );
+    const leakedAcademic = capabilities.normalizeProjectCapabilities({
+        version: 2,
+        preset: 'research-paper',
+        modules: ['library', 'characters', 'locations', 'manuscript'],
+        libraryPack: 'academic',
+    });
+    assert.equal(leakedAcademic.libraryPack, 'academic');
+    assert.ok(!leakedAcademic.modules.includes('characters'));
+    assert.ok(!leakedAcademic.modules.includes('locations'));
+    const academicPolicy = capabilities.resolveProjectContentPolicy(leakedAcademic);
+    assert.deepEqual(
+        {
+            libraryPack: academicPolicy.libraryPack,
+            academicLibrary: academicPolicy.academicLibrary,
+            narrativeLibrary: academicPolicy.narrativeLibrary,
+            characters: academicPolicy.characters,
+            locations: academicPolicy.locations,
+            narrativeScenes: academicPolicy.narrativeScenes,
+            thesesBinder: academicPolicy.thesesBinder,
+            authoredCanvas: academicPolicy.authoredCanvas,
+        },
+        {
+            libraryPack: 'academic',
+            academicLibrary: true,
+            narrativeLibrary: false,
+            characters: false,
+            locations: false,
+            narrativeScenes: false,
+            thesesBinder: true,
+            authoredCanvas: false,
+        },
+    );
+    const emptyLibrary = capabilities.normalizeProjectCapabilities({
+        version: 2,
+        preset: 'custom',
+        modules: ['manuscript', 'characters', 'locations'],
+        libraryPack: 'none',
+    });
+    assert.ok(!emptyLibrary.modules.includes('characters'));
+    assert.ok(!emptyLibrary.modules.includes('locations'));
+    assert.equal(emptyLibrary.libraryPack, 'none');
+    const narrativeLibrary = capabilities.normalizeProjectCapabilities({
+        version: 2,
+        preset: 'custom',
+        modules: ['manuscript', 'library'],
+        libraryPack: 'narrative',
+    });
+    assert.ok(narrativeLibrary.modules.includes('characters'));
+    assert.ok(narrativeLibrary.modules.includes('locations'));
+    assert.equal(capabilities.usesAuthoredCanvasFolder(preset), false);
+    assert.equal(capabilities.usesAuthoredCanvasFolder(capabilities.capabilitiesForPreset('novel')), true);
+    assert.equal(capabilities.usesThesesBinder(preset), true);
+    assert.equal(capabilities.usesThesesBinder(capabilities.capabilitiesForPreset('novel')), false);
 });
 
 test('dependencies are added without enabling unrelated modules', () => {
@@ -44,7 +117,7 @@ test('dependencies are added without enabling unrelated modules', () => {
 
 test('unknown module ids are discarded safely', () => {
     const normalized = capabilities.normalizeProjectCapabilities({
-        preset: 'custom', modules: ['manuscript', 'made-up-module'], wordCountProfile: 'academic',
+        preset: 'custom', modules: ['manuscript', 'made-up-module', 'citations'], wordCountProfile: 'academic',
     });
     assert.deepEqual(normalized.modules, ['manuscript']);
 });
@@ -57,6 +130,8 @@ test('research presets drop presentation canvas while custom projects keep it', 
     assert.ok(!migrated.modules.includes('canvas'));
     assert.ok(migrated.modules.includes('flatCanvas'));
     assert.ok(migrated.modules.includes('columnBoard'));
+    assert.ok(migrated.modules.includes('scenes'));
+    assert.ok(!migrated.modules.includes('citations'));
     const withOrder = capabilities.normalizeProjectCapabilities({
         version: 2, preset: 'literature-review',
         modules: ['manuscript', 'notes', 'library', 'table'],
@@ -98,14 +173,20 @@ test('plain projects count writing Markdown without scanning research or module 
 });
 
 test('project manifests persist capabilities while legacy manifests stay implicit', async () => {
-    const sceneManager = await readFile(new URL('../services/SceneManager.ts', import.meta.url), 'utf8');
+    const [sceneManager, main] = await Promise.all([
+        readFile(new URL('../services/SceneManager.ts', import.meta.url), 'utf8'),
+        readFile(new URL('../main.ts', import.meta.url), 'utf8'),
+    ]);
     assert.match(sceneManager, /capabilitiesVersion: capabilities\.version/);
     assert.match(sceneManager, /projectType: capabilities\.preset/);
     assert.match(sceneManager, /modules: capabilities\.modules/);
+    assert.match(sceneManager, /libraryPack: capabilities\.libraryPack/);
+    assert.match(sceneManager, /libraryPack: fm\.libraryPack/);
     assert.match(sceneManager, /: undefined,\s*definedActs:/s);
     assert.match(sceneManager, /if \(project\.capabilities\) \{\s*const capabilities/s);
     assert.match(sceneManager, /capabilities\.modules\.includes\('library'\)/);
-    assert.match(sceneManager, /capabilities\.modules\.includes\('canvas'\)/);
+    assert.match(sceneManager, /usesAuthoredCanvasFolder\(capabilities\)/);
+    assert.match(main, /if \(!usesAuthoredCanvasFolder\(project\.capabilities\)\) continue/);
     assert.match(sceneManager, /projectNavigation: capabilities\.navigation/);
     assert.match(sceneManager, /!capabilities\.modules\.includes\('scenes'\)/);
     assert.match(sceneManager, /草稿/);
@@ -160,7 +241,8 @@ test('disabled Library never enters category seeding, migration, or entity reloa
     assert.match(main, /if \(!this\.capabilityService\.isEnabled\('library', project\)\) continue/);
     assert.match(main, /!this\.capabilityService\.isEnabled\('library', this\.sceneManager\.activeProject\)\) return false/);
     assert.match(categorySync, /!project \|\| !plugin\.capabilityService\.isEnabled\('library', project\)\) return false/);
-    assert.match(nativeBase, /!project \|\| !plugin\.capabilityService\.isEnabled\('library', project\)\) return/);
+    assert.match(nativeBase, /alwaysCategoryIds: \[ALL_LIBRARY_CATEGORY_ID\]/);
+    assert.doesNotMatch(nativeBase, /alwaysCategoryIds: \[ALL_LIBRARY_CATEGORY_ID, 'characters', 'locations'\]/);
 });
 
 test('manuscript provides document creation and editing when Scenes is disabled', async () => {
@@ -190,7 +272,7 @@ test('project document Base includes writing files and excludes module storage',
     assert.match(base, /fileManager\.renameFile\(legacy, path\)/);
     assert.match(base, /file\.inFolder/);
     assert.match(base, /file\.path !=/);
-    for (const folder of ['System', 'Library', 'Canvas', 'Attachments', 'Research', 'Notes', 'Scenes']) {
+    for (const folder of ['System', 'Library', 'Canvas', 'Attachments', 'Research', 'Notes', 'Scenes', 'Theses']) {
         assert.match(base, new RegExp(`'${folder}'`));
     }
     assert.match(base, /file\.name/);
@@ -210,7 +292,7 @@ test('generic writing hides narrative-only statistics and commands', async () =>
     assert.match(stats, /narrativeMode \? t\('Scenes'\) : t\('Documents'\)/);
     assert.match(stats, /isEnabled\('scenes', this\.getBoundProject\(\)\)/);
     const pages = await readFile(new URL('../models/ProjectPages.ts', import.meta.url), 'utf8');
-    assert.match(pages, /label: 'Node-based presentation canvas'/);
+    assert.match(pages, /label: 'Presentation'/);
     assert.doesNotMatch(switcher, /label: 'Play in Canvas'/);
 });
 

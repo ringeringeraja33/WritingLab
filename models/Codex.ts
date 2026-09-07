@@ -610,6 +610,48 @@ export const PRESET_CODEX_CATEGORIES: CodexCategoryDef[] = [
     ...ACADEMIC_CODEX_CATEGORIES,
 ];
 
+/** People/place hubs. Not Codex presets; they still belong to the narrative Library pack. */
+export const NARRATIVE_LIBRARY_HUB_IDS = ['characters', 'locations'] as const;
+
+/** Literature / claims / arguments / facts are Browse-only; they have no Profiles archive. */
+export function libraryCategoryHasProfilePage(categoryId: string): boolean {
+    return !ACADEMIC_CODEX_CATEGORIES.some(category => category.id === categoryId);
+}
+
+export function isAcademicLibraryCategoryId(categoryId: string): boolean {
+    return ACADEMIC_CODEX_CATEGORIES.some(category => category.id === categoryId);
+}
+
+export function isNarrativeLibraryCategoryId(categoryId: string): boolean {
+    return (NARRATIVE_LIBRARY_HUB_IDS as readonly string[]).includes(categoryId)
+        || BUILTIN_CODEX_CATEGORIES.some(category => category.id === categoryId);
+}
+
+/**
+ * Whether this id is part of the project's Library pack.
+ * Custom (non-preset) ids belong to every pack except `none`.
+ */
+export function libraryCategoryBelongsToPack(
+    categoryId: string,
+    pack: import('./ProjectCapabilities').LibraryCategoryPackId,
+): boolean {
+    if (categoryId === 'uncategorized' || categoryId === '__all-library__') return true;
+    if (isAcademicLibraryCategoryId(categoryId)) return pack === 'academic' || pack === 'both';
+    if (isNarrativeLibraryCategoryId(categoryId)) return pack === 'narrative' || pack === 'both';
+    return pack !== 'none';
+}
+
+/** Vault folders we may create for a pack. Uncategorized is Library-root notes, not a subfolder. */
+export function shouldCreateLibraryCategoryFolder(
+    categoryId: string,
+    pack: import('./ProjectCapabilities').LibraryCategoryPackId,
+): boolean {
+    if (categoryId === 'uncategorized' || categoryId === '__all-library__') return false;
+    if (isAcademicLibraryCategoryId(categoryId)) return pack === 'academic' || pack === 'both';
+    if (isNarrativeLibraryCategoryId(categoryId)) return pack === 'narrative' || pack === 'both';
+    return pack !== 'none';
+}
+
 /**
  * Look up a built-in category definition by its id.
  */

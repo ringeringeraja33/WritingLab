@@ -22,6 +22,23 @@ export interface WordcountPrepareOptions {
     excludeCitationsAndReferences?: boolean;
 }
 
+/** YAML belongs to document metadata, never to authored prose. */
+export function stripWordcountFrontmatter(text: string): string {
+    return text.replace(/^\uFEFF/, '').replace(/^---[ \t]*\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/, '');
+}
+
+/** Shared tokens for inventory totals and revision deltas, including short CJK drafts. */
+export function wordcountTokens(text: string, locale: StoryLineLocale = DEFAULT_STORYLINE_LOCALE, opts: WordcountPrepareOptions = {}): string[] {
+    const cleaned = prepareTextForWordcount(text, opts);
+    let resolved = resolveLocale(locale, cleaned, DEFAULT_STORYLINE_LOCALE);
+    if (locale === 'auto') {
+        if (/[\u3040-\u30ff]/.test(cleaned)) resolved = 'ja';
+        else if (/[\uac00-\ud7af]/.test(cleaned)) resolved = 'ko';
+        else if (/[\u3400-\u9fff]/.test(cleaned)) resolved = 'zh';
+    }
+    return tokenizeWords(cleaned, resolved).filter(token => /[\p{L}\p{N}]/u.test(token));
+}
+
 export function wordcountOptionsForProfile(
     profile: WordCountProfileId | undefined,
     plugin: { excludeComments?: boolean; excludeChecklists?: boolean } = {},
@@ -90,6 +107,7 @@ export function prepareTextForWordcount(
     s = s.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gm, ' ');
     s = s.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*$/gm, ' ');
 
+    s = s.replace(/!\[\[[^\]]+\]\]/g, ' ');
     s = s.replace(/!\[([^\]]*)\]\([^)]+\)/g, ' ');
     s = s.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
     s = s.replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (_all, path: string, alias?: string) => {
@@ -145,11 +163,8 @@ export function countWordRevisionChurn(
     opts: WordcountPrepareOptions = {},
 ): number {
     const frequencies = (text: string): Map<string, number> => {
-        const cleaned = prepareTextForWordcount(text, opts);
         const counts = new Map<string, number>();
-        if (!cleaned) return counts;
-        const resolved = resolveLocale(locale, cleaned, DEFAULT_STORYLINE_LOCALE);
-        for (const token of tokenizeWords(cleaned, resolved)) {
+        for (const token of wordcountTokens(text, locale, opts)) {
             counts.set(token, (counts.get(token) || 0) + 1);
         }
         return counts;

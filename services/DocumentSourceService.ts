@@ -1,4 +1,5 @@
 import type { App, TFile } from 'obsidian';
+import { stripWordcountFrontmatter } from '../utils/wordcountText';
 
 const normalizeSourcePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\//, '');
 
@@ -33,7 +34,7 @@ export class DocumentSourceService {
 export class ProjectMarkdownDocumentSource implements DocumentSource {
     readonly id = 'project-markdown';
     readonly label = 'Project Markdown';
-    private readonly excludedFolders = new Set(['System', 'Library', 'Canvas', 'Attachments', 'Research']);
+    private readonly excludedFolders = new Set(['System', 'Library', 'Codex', 'Canvas', 'Attachments', 'Research']);
 
     constructor(private app: App, private baseFolder: string, private manifestPath: string) {}
 
@@ -44,6 +45,7 @@ export class ProjectMarkdownDocumentSource implements DocumentSource {
             .filter(file => {
                 const path = normalizeSourcePath(file.path);
                 if (path === normalizeSourcePath(this.manifestPath) || !path.startsWith(prefix)) return false;
+                if (path.slice(prefix.length).split('/').some(part => part.startsWith('.'))) return false;
                 const firstSegment = path.slice(prefix.length).split('/')[0];
                 return !this.excludedFolders.has(firstSegment);
             })
@@ -52,6 +54,6 @@ export class ProjectMarkdownDocumentSource implements DocumentSource {
 
     async readText(document: TrackedDocument): Promise<string> {
         if (!document.file) return '';
-        return this.app.vault.cachedRead(document.file);
+        return stripWordcountFrontmatter(await this.app.vault.cachedRead(document.file));
     }
 }

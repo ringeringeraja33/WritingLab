@@ -166,8 +166,10 @@ try {
     await page.locator('[data-module="flatCanvas"] input').uncheck();
     assert.equal(await page.locator('[data-module="columnBoard"] input').isChecked(), true);
     assert.equal(await page.locator('[data-module="manuscript"] .setting-item-name').evaluate(el=>getComputedStyle(el).fontSize),'13px');
-    assert.equal(await page.locator('[data-module="manuscript"]').evaluate(el=>getComputedStyle(el).paddingTop),'10px');
-    assert.equal(await page.locator('[data-module="manuscript"]').evaluate(el=>getComputedStyle(el).paddingLeft),'14px');
+    assert.equal(await page.locator('[data-module="manuscript"]').evaluate(el=>getComputedStyle(el).paddingTop),'14px');
+    assert.equal(await page.locator('[data-module="manuscript"]').evaluate(el=>getComputedStyle(el).paddingLeft),'18px');
+    assert.equal(await page.locator('[data-module="manuscript"]').evaluate(el=>getComputedStyle(el).borderTopWidth),'1px');
+    assert.equal(await page.locator('[data-module="notes"]').evaluate(el=>getComputedStyle(el).borderTopWidth),'1px', 'first-child keeps a full border');
     assert.equal(await page.locator('[data-module="notes"]').evaluate(el => {
         const name = el.querySelector('.setting-item-name').getBoundingClientRect();
         const toggle = el.querySelector('input').getBoundingClientRect();
@@ -178,6 +180,15 @@ try {
         const toggle = el.querySelector('input').getBoundingClientRect();
         return desc.right <= toggle.left - 4;
     }), true, 'description does not overlap the toggle');
+    assert.equal(await page.locator('[data-library-pack="academic"]').count(), 1);
+    assert.equal(await page.locator('[data-library-pack="narrative"]').count(), 1);
+    assert.equal(await page.locator('[data-library-pack="both"]').count(), 1);
+    assert.equal(await page.locator('[data-module="characters"]').count(), 0);
+    assert.equal(await page.locator('[data-library-pack="narrative"] input').isChecked(), true);
+    assert.equal(await page.locator('[data-library-pack="academic"] input').isChecked(), false);
+    await page.locator('[data-library-pack="academic"] input').check();
+    assert.equal(await page.locator('[data-library-pack="academic"] input').isChecked(), true);
+    assert.equal(await page.locator('[data-library-pack="narrative"] input').isChecked(), false);
     assert.equal(await page.locator('.nl-module-group-tracking .nl-module-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),2);
     assert.deepEqual(await page.locator('.nl-module-group h3').evaluateAll(els => els.map(el => el.textContent)), ['写作','画布与整理','叙事规划','叙事内容','资料与研究','写作进度']);
     assert.equal(await page.locator('[data-module="series"]').evaluate(el => {
@@ -228,7 +239,7 @@ try {
     assert.ok(await page.locator('.story-line-view-tab').filter({hasText:'整理'}).isVisible());
     assert.ok(await page.locator('.story-line-view-tab').filter({hasText:'叙事规划'}).isVisible());
     assert.ok(await page.locator('.story-line-view-tab.active').isVisible());
-    assert.ok((await page.locator('.story-line-view-tab[draggable="true"]').count()) > 1);
+    assert.ok((await page.locator('.story-line-view-tab.is-reorderable').count()) > 1);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.locator('.story-line-view-tab').filter({hasText:'叙事规划'}).locator('.codex-dropdown-chevron').click();
     await page.locator('.test-menu button').first().waitFor();

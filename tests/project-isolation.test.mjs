@@ -59,7 +59,7 @@ const switchProject = sceneManager.slice(
 
 const isolate = mainTs.slice(
     mainTs.indexOf('isolateProjectTransientState()'),
-    mainTs.indexOf('rebindWritingTrackerSession()'),
+    mainTs.indexOf('    rebindWritingTrackerSession(): void'),
 );
 
 const scanPlotGrid = mainTs.slice(

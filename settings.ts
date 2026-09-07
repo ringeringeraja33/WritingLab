@@ -718,6 +718,16 @@ export interface SceneCardsSettings {
         /** `single` (default) or `double` arrows on the Story Graph. */
         arrow?: 'single' | 'double';
     }>;
+    /**
+     * Project-scoped wikilink relation definitions. Legacy global definitions
+     * remain a read-only migration fallback until a project saves its own set.
+     */
+    storyGraphRelationCategoriesByProject?: Record<string, Array<{
+        id: string;
+        label: string;
+        color: string;
+        arrow?: 'single' | 'double';
+    }>>;
     /** Directed source-path → target-path edge keys mapped to a relation category id. */
     storyGraphLinkRelationAssignments?: Record<string, string>;
     /**
@@ -1082,6 +1092,7 @@ export const DEFAULT_SETTINGS: SceneCardsSettings = {
 
     tagTypeOverrides: {},
     storyGraphRelationCategories: [],
+    storyGraphRelationCategoriesByProject: {},
     storyGraphLinkRelationAssignments: {},
     storyGraphCharacterRelationTypes: [],
     storyGraphEntityColors: {},
@@ -1197,7 +1208,7 @@ export class SceneCardsSettingTab extends PluginSettingTab {
             !hasProject || this.plugin.capabilityService.isEnabled(module);
         const tabs: Array<{ id: NarrativeLabSettingsTabId; label: string }> = [
             { id: 'general', label: 'General' },
-            ...(enabled('canvas') ? [{ id: 'canvas' as const, label: 'Node-based presentation canvas' }] : []),
+            ...(enabled('canvas') ? [{ id: 'canvas' as const, label: 'Presentation' }] : []),
             ...(enabled('scenes') ? [
                 { id: 'scenes' as const, label: 'Scenes' },
                 { id: 'templates' as const, label: 'Template Center' },
@@ -1418,7 +1429,7 @@ export class SceneCardsSettingTab extends PluginSettingTab {
     }
 
     private renderNarrativeCanvasSettings(panel: HTMLElement): void {
-        new Setting(panel).setName(t('Node-based presentation canvas')).setHeading();
+        new Setting(panel).setName(t('Presentation')).setHeading();
         const bag = this.canvasSettingsBag();
 
         new Setting(panel)

@@ -13,7 +13,7 @@ import {
     NARRATIVE_CANVAS_VIEW_TYPE,
     NCANVAS_LIBRARY_VIEW_TYPE,
 } from '../constants';
-import { getBuiltinCodexCategory, makeProfileCodexCategory } from '../models/Codex';
+import { getBuiltinCodexCategory, makeProfileCodexCategory, shouldCreateLibraryCategoryFolder } from '../models/Codex';
 import { resolveLibraryCategoryLabel } from '../services/LibraryCategorySync';
 import { t } from '../utils/i18n';
 import {
@@ -30,6 +30,8 @@ import {
 } from '../models/ProjectPages';
 import { ProjectModulesModal } from './ProjectModulesModal';
 import { showMenuSafely } from '../utils/obsidianMenu';
+import { attachPointerTabReorder } from '../utils/tabStripReorder';
+import { libraryCategoryPack, usesNarrativeLibraryCategories } from '../models/ProjectCapabilities';
 
 export interface ViewSwitcherEntry {
     type: string;
@@ -313,63 +315,20 @@ function attachProjectTabReordering(
     plugin: SceneCardsPlugin,
     project: import('../models/StoryLineProject').StoryLineProject,
 ): void {
-    const tabs = Array.from(switcher.querySelectorAll<HTMLButtonElement>(':scope > button[data-group]'));
-    if (tabs.length < 2) return;
-    let dragged: HTMLButtonElement | null = null;
-    let suppressClickUntil = 0;
-    const clearIndicators = () => {
-        for (const tab of tabs) tab.removeClass('is-drag-over-before', 'is-drag-over-after');
-    };
-    const groupIds = () => Array.from(switcher.querySelectorAll<HTMLButtonElement>(':scope > button[data-group]'))
-        .map(item => item.dataset.group)
-        .filter((id): id is string => Boolean(id));
-
-    for (const tab of tabs) {
-        tab.draggable = true;
-        tab.addClass('is-reorderable');
-        tab.addEventListener('click', event => {
-            if (Date.now() >= suppressClickUntil) return;
-            event.preventDefault();
-            event.stopImmediatePropagation();
-        }, true);
-        tab.addEventListener('dragstart', event => {
-            dragged = tab;
-            tab.addClass('is-dragging');
-            event.dataTransfer?.setData('text/plain', tab.dataset.group || '');
-            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-            event.stopPropagation();
-        });
-        tab.addEventListener('dragover', event => {
-            if (!dragged || dragged === tab) return;
-            event.preventDefault();
-            event.stopPropagation();
-            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-            clearIndicators();
-            const rect = tab.getBoundingClientRect();
-            tab.addClass(event.clientX < rect.left + rect.width / 2 ? 'is-drag-over-before' : 'is-drag-over-after');
-        });
-        tab.addEventListener('drop', event => {
-            if (!dragged || dragged === tab) return;
-            event.preventDefault();
-            event.stopPropagation();
-            const before = groupIds();
-            const rect = tab.getBoundingClientRect();
-            const insertAfter = event.clientX >= rect.left + rect.width / 2;
-            switcher.insertBefore(dragged, insertAfter ? tab.nextSibling : tab);
-            const ordered = groupIds();
-            suppressClickUntil = Date.now() + 250;
-            clearIndicators();
-            if (ordered.join('\0') === before.join('\0')) return;
+    const getTabs = () => Array.from(switcher.querySelectorAll<HTMLButtonElement>(':scope > button[data-group]'));
+    if (getTabs().length < 2) return;
+    attachPointerTabReorder({
+        container: switcher,
+        getTabs,
+        idOf: tab => tab.dataset.group,
+        ignoreClosest: '.codex-dropdown-chevron',
+        appendBefore: () => switcher.querySelector(':scope > .nl-tab-more'),
+        onReorder: ordered => {
             const previous = plugin.capabilityService.get(project).navigation?.order;
-            void plugin.updateProjectTabOrder(project, flattenTabGroupOrder(ordered, previous))
-                .catch(error => new obsidian.Notice(String(error)));
-        });
-        tab.addEventListener('dragend', () => {
-            tab.removeClass('is-dragging');
-            clearIndicators();
-            dragged = null;
-        });
-    }
+            return plugin.updateProjectTabOrder(project, flattenTabGroupOrder(ordered, previous));
+        },
+        onError: error => new obsidian.Notice(String(error)),
+    });
 }
 
 /**
@@ -478,12 +437,17 @@ function showCodexDropdown(
 
     const charactersLabel = resolveLibraryCategoryLabel(plugin, 'characters', 'Characters');
     const locationsLabel = resolveLibraryCategoryLabel(plugin, 'locations', 'Locations');
+    const boundProject = getLeafNarrativeLabProjectFile(leaf);
+    const project = plugin.sceneManager.getProjects().find(item => item.filePath === boundProject);
+    const pack = libraryCategoryPack(plugin.capabilityService.get(project));
+    const narrativeHubs = usesNarrativeLibraryCategories(pack);
 
-    // Characters — NarrativeLab dedicated view
-    addDropdownItem(menu, 'users', charactersLabel, activeViewType === CHARACTER_VIEW_TYPE, () => switchTo(CHARACTER_VIEW_TYPE));
-
-    // Locations
-    addDropdownItem(menu, 'map-pin', locationsLabel, activeViewType === LOCATION_VIEW_TYPE, () => switchTo(LOCATION_VIEW_TYPE));
+    if (narrativeHubs && plugin.isViewEnabled(CHARACTER_VIEW_TYPE, boundProject)) {
+        addDropdownItem(menu, 'users', charactersLabel, activeViewType === CHARACTER_VIEW_TYPE, () => switchTo(CHARACTER_VIEW_TYPE));
+    }
+    if (narrativeHubs && plugin.isViewEnabled(LOCATION_VIEW_TYPE, boundProject)) {
+        addDropdownItem(menu, 'map-pin', locationsLabel, activeViewType === LOCATION_VIEW_TYPE, () => switchTo(LOCATION_VIEW_TYPE));
+    }
 
     // Enabled codex categories
     const enabledIds = plugin.settings.codexEnabledCategories || [];
@@ -492,6 +456,7 @@ function showCodexDropdown(
             makeProfileCodexCategory(c.id, c.label, c.icon),
     );
     for (const id of enabledIds) {
+        if (!shouldCreateLibraryCategoryFolder(id, pack)) continue;
         const builtin = getBuiltinCodexCategory(id);
         const custom = customDefs.find((c: { id: string }) => c.id === id);
         const def = builtin && custom
