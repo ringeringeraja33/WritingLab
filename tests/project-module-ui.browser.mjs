@@ -17,6 +17,10 @@ const manuscript = await readFile('views/ManuscriptView.ts','utf8');
 const manuscriptAst = ts.createSourceFile('ManuscriptView.ts',manuscript,ts.ScriptTarget.Latest,true);
 const manuscriptClass = manuscriptAst.statements.find(node=>ts.isClassDeclaration(node)&&node.name?.text==='ManuscriptView');
 const foldMethods = ['loadDocumentFolds','installDocumentFold'].map(name=>manuscriptClass.members.find(node=>node.name?.getText(manuscriptAst)===name).getText(manuscriptAst)).join('\n');
+const board = await readFile('views/BoardView.ts', 'utf8');
+const boardAst = ts.createSourceFile('BoardView.ts', board, ts.ScriptTarget.Latest, true);
+const boardClass = boardAst.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'BoardView');
+const boardToolbar = boardClass.members.find(node => node.name?.getText(boardAst) === 'renderToolbar').getText(boardAst);
 const host = `
 window.activeDocument = document;
 window.activeWindow = window;
@@ -89,12 +93,14 @@ const stubs = {
     Tooltip: 'export const attachTooltip=(el,text)=>el.title=text;',
     LibraryModeBar: 'export const getRememberedLibraryCategory=()=>null; export const resolveLibraryViewType=()=>"narrative-lab-library";',
     LibraryCategorySync: 'export const resolveLibraryCategoryLabel=(_,__,label)=>label;',
-    Codex: 'export const getBuiltinCodexCategory=()=>null; export const makeProfileCodexCategory=x=>x;',
+    Codex: 'export const getBuiltinCodexCategory=()=>null; export const makeProfileCodexCategory=x=>x; export const shouldCreateLibraryCategoryFolder=()=>true;',
     NCanvasLibraryView: 'export const openNewProjectCanvasModal=()=>{};',
 };
 const result = await build({
     stdin: { resolveDir: process.cwd(), loader: 'ts', contents: `
 import { Modal, Setting, Notice } from 'obsidian';
+import * as obsidian from 'obsidian';
+import { attachTooltip } from './components/Tooltip';
 import { renderProjectModulePicker, PROJECT_MODULE_LABELS } from './components/ProjectModulePicker';
 import { ProjectModulesModal } from './components/ProjectModulesModal';
 import { renderViewSwitcher } from './components/ViewSwitcher';
@@ -106,6 +112,13 @@ import { FolderWritingScope } from './services/FolderWritingScope';
 import { setActiveUiLanguage, t } from './utils/i18n';
 class ProjectFolderSuggest { constructor(...args){} close(){} }
 class Wizard { ${wizard} }
+class BoardToolbarHarness {
+ boardMode='corkboard'; groupBy='chapter'; boundProjectFile='Projects/Test/Test.md';
+ constructor(public plugin, public leaf) {}
+ getViewType(){return this.boardMode==='kanban'?'narrative-lab-column-board':'narrative-lab-board'}
+ usesScenes(){return true}
+ ${boardToolbar}
+}
 class FoldHarness {
  documentFolds={}; documentFoldOwner=''; lazyObserver=null;
  constructor(private owner:string){this.loadDocumentFolds()}
@@ -121,6 +134,7 @@ window.showFolds=(owner='A')=>{document.body.empty();window.foldMounts=0;const h
 setActiveUiLanguage('zh');
 const project={title:'测试项目',filePath:'Projects/Test/Test.md',capabilities:capabilitiesForPreset('full-narrative')};
 const plugin={ app:{workspace:{revealLeaf(){}}}, settings:{storyLineRoot:'Projects'}, sceneManager:{getProjects:()=>[project]}, capabilityService:{get:()=>normalizeProjectCapabilities(project.capabilities),isEnabled:(module)=>moduleEnabled(project.capabilities,module)},
+ getProjectDisplayName:()=>project.title, async updateProjectTabOrder(p,order){p.capabilities.navigation={...p.capabilities.navigation,order,hidden:p.capabilities.navigation?.hidden??[]};},
  openChapterTemplates:async()=>{window.lastTool='chapterTemplates';},
  isViewEnabled(type){ const page=PROJECT_PAGES.find(p=>p.type===type); return page?moduleEnabled(project.capabilities,page.module):false; },
  async updateProjectModules(p,c){p.capabilities=c;}, getNcanvasPathsForProject:()=>({candidates:[]}), openProjectCanvasTab(){window.lastPage='canvas';}, activateView(type){window.lastPage=type;} };
@@ -129,7 +143,18 @@ window.showWizard=()=>{document.body.empty();const instance=new Wizard();Object.
 window.showTabs=()=>{document.body.empty();const toolbar=document.body.createDiv('story-line-toolbar');toolbar.createEl('h3',{text:'Test',cls:'story-line-view-title'});
 const leaf={view:{containerEl:document.body,register(){}},getViewState:()=>({state:{narrativeLabProjectFile:project.filePath}}),async setViewState(state){window.lastPage=state.type;}};
 renderViewSwitcher(toolbar,'narrative-lab-board',plugin,leaf);};
-window.showFolderTracker=async()=>{
+window.showNarrowBoard=(width=560,mode='corkboard')=>{
+ document.body.empty();
+ // Fixed pane inside a wide viewport, matching desktop split views.
+ const pane=document.body.createDiv({cls:'test-narrow-pane'});
+ Object.assign(pane.style,{width:width+'px',height:'440px',display:'flex',flexDirection:'column',background:'white'});
+ project.title='Writing · 一个需要在窄面板中截断的很长项目名称';
+ const leaf={view:{containerEl:pane,register(){}},getViewState:()=>({state:{narrativeLabProjectFile:project.filePath}}),async setViewState(s){window.lastPage=s.type;}};
+ const toolbar=pane.createDiv('story-line-toolbar sl-two-row-toolbar');
+ const harness=new BoardToolbarHarness(plugin,leaf);harness.boardMode=mode;harness.renderToolbar(toolbar);
+ const canvas=pane.createDiv({cls:'test-canvas',text:'画布内容'});Object.assign(canvas.style,{flex:'1 1 0',minHeight:'0',background:'#f4f6fa'});
+};
+window.showFolderTracker=async(width)=>{
  document.body.empty();const scope=new FolderWritingScope({id:'folder1',path:'日记/随笔',recursive:true,locale:'zh',tracker:{history:{}}});
  scope.setText('日记/随笔/一.md','这是已有的文稿内容。',false);scope.tracker.startSession(scope.totalWords,true);
  let panel;
@@ -137,7 +162,8 @@ window.showFolderTracker=async()=>{
  async stop(){this.current=null;this.ready=false;panel.refresh()},async select(){this.current=scope;this.ready=true;panel.refresh()}};
  const trackerPlugin={...plugin,writingTracker:new WritingTracker(),globalWritingTracker:{tracker:new WritingTracker()},folderWritingTracker:folderService,
  app:{...plugin.app,workspace:{...plugin.app.workspace,requestSaveLayout(){}}},scheduleWritingTrackerSave(){},saveSettings:async()=>{}};
- panel=new WritingTrackerPanel({app:trackerPlugin.app},trackerPlugin);await panel.onOpen();panel.setScope('folder');window.folderPanel=panel;
+ panel=new WritingTrackerPanel({app:trackerPlugin.app},trackerPlugin);if(width)panel.containerEl.style.width=width+'px';await panel.onOpen();panel.setScope('folder');window.folderPanel=panel;
+ window.folderService=folderService;
 };
 ` }, bundle: true, write: false, format: 'iife',
     plugins: [{ name: 'isolated-host', setup(b) {
@@ -156,6 +182,7 @@ try {
     await page.setContent('<!doctype html><meta charset="utf-8"><body></body>');
     await page.addStyleTag({ content: `:root{--background-primary:#fff;--background-modifier-border:#ddd;--text-normal:#242424;--text-muted:#666;--size-4-2:8px;--font-ui-small:13px;--interactive-accent:#3878bc}*{box-sizing:border-box}body{font:15px system-ui;margin:0;background:#f4f4f4;color:#242424}.modal{margin:20px auto;background:white;padding:24px;border-radius:12px;max-width:94vw}.modal-content{max-height:75vh;overflow:auto}.setting-item{display:flex;justify-content:space-between;align-items:center;padding:12px 0;gap:12px}.setting-item-control{display:flex;align-items:center;gap:8px}.setting-item-description{font-size:12px;color:#666;margin-top:5px}button,select,input{font:inherit}button,select{padding:6px 10px;border:1px solid #ddd;background:white;border-radius:6px}input[type=checkbox]{width:30px;height:22px;accent-color:#3878bc}.mod-cta{background:#3878bc;color:white}.test-menu{position:fixed;display:grid;z-index:100;background:white;border:1px solid #ddd;padding:8px}.story-line-toolbar{background:white;padding:16px}` });
     await page.addStyleTag({ content: await readFile('styles.css', 'utf8') });
+    if (process.env.NARRATIVE_LAB_THEME_CSS) await page.addStyleTag({ content: await readFile(process.env.NARRATIVE_LAB_THEME_CSS, 'utf8') });
     // Emulate large host text and native first-row rules; scoped UI styles must win.
     await page.addStyleTag({content:`:root{--background-secondary:#f3f4f6;--background-primary-alt:#f9fafb;--font-interface:system-ui,sans-serif}body{font-size:24px}.modal-title{margin:0 0 8px}.setting-item:first-child{padding-top:0;border-top:0}input[type=checkbox]{appearance:none;position:relative;flex-shrink:0;width:32px;height:19px;border-radius:20px;margin:0;background:#ced2d8;border:0}input[type=checkbox]:checked{background:#3878bc}input[type=checkbox]::after{content:'';position:absolute;top:3px;left:3px;width:13px;height:13px;border-radius:50%;background:white;box-shadow:0 1px 2px #0002}input[type=checkbox]:checked::after{left:16px}`});
     await page.addScriptTag({ content: result.outputFiles[0].text });
@@ -246,6 +273,30 @@ try {
     await page.locator('.test-menu button').filter({hasText:'情节地铁图'}).click();
     assert.equal(await page.evaluate(()=>window.lastPage),'narrative-lab-subway');
     await page.screenshot({path:join(output,'tabs-overflow.png')});
+    // Regression: toolbar rows must grow, even with large host fonts in a
+    // narrow desktop pane. Check real Board toolbar construction, not a mock.
+    await page.setViewportSize({width:1400,height:900});
+    for (const mode of ['corkboard','kanban']) {
+        await page.evaluate(mode=>window.showNarrowBoard(560,mode),mode);
+        for (const width of [560,360,240,900,560]) {
+            await page.locator('.test-narrow-pane').evaluate((el,width)=>el.style.width=width+'px',width);
+            await page.waitForTimeout(80);
+            const layout=await page.locator('.story-line-toolbar').evaluate(el=>{
+                const box=e=>e.getBoundingClientRect(),header=box(el),nav=box(el.querySelector('.story-line-view-switcher'));
+                const controls=box(el.querySelector('.story-line-toolbar-controls'));
+                const buttons=[...el.querySelectorAll('button')].filter(b=>!b.hidden&&box(b).width&&box(b).height);
+                return {narrow:el.classList.contains('sl-toolbar-narrow'),controlsBelowTabs:controls.top>=nav.bottom,
+                    contained:buttons.every(b=>{const r=box(b);return r.left>=header.left&&r.right<=header.right+1&&r.top>=header.top&&r.bottom<=header.bottom+1}),
+                    noButtonOverlap:buttons.every((b,i)=>buttons.slice(i+1).every(c=>{const a=box(b),d=box(c);return a.right<=d.left+1||d.right<=a.left+1||a.bottom<=d.top+1||d.bottom<=a.top+1})),
+                    canvasBelow:box(el.nextElementSibling).top>=header.bottom,
+                    fits:el.scrollWidth<=el.clientWidth+1};
+            });
+            assert.deepEqual(layout,{narrow:width<=640,controlsBelowTabs:true,contained:true,noButtonOverlap:true,canvasBelow:true,fits:true},mode+' at '+width+'px');
+            assert.ok(await page.locator('.story-line-view-tab.active').isVisible());
+            if(width===240) await page.screenshot({path:join(output,'narrow-'+mode+'-240.png')});
+        }
+        await page.screenshot({path:join(output,'narrow-'+mode+'.png')});
+    }
     await page.evaluate(()=>window.showFolds());
     await page.waitForTimeout(50);
     assert.equal(await page.evaluate(()=>window.foldMounts),0,'initial disclosure events cannot mount every editor');
@@ -273,6 +324,21 @@ try {
     assert.equal(await page.locator('select').count(),0,'idle state has no placeholder dropdown');
     assert.equal(await page.getByText('写作冲刺',{exact:true}).count(),0,'stopped scope does not display another tracker');
     await page.evaluate(()=>window.folderPanel.onClose());
+    await page.setViewportSize({width:1400,height:900});
+    await page.evaluate(()=>window.showFolderTracker(240));
+    assert.ok(await page.getByRole('button',{name:'开始',exact:true}).isVisible());
+    await page.getByRole('button',{name:'停止文件夹统计',exact:true}).click();
+    await page.evaluate(()=>{
+        window.folderService.savedScopes=[{id:'long',path:'Projects/一个名称很长的资料目录/LongFolderNameWithoutAnyBreaksForWritingStatistics',recursive:true}];
+        window.folderPanel.refresh();
+    });
+    const folderLayout=await page.locator('.nl-tracker-panel').evaluate(el=>{
+        const b=el.getBoundingClientRect();return {fits:el.scrollWidth<=el.clientWidth,
+            buttonsFit:[...el.querySelectorAll('button')].every(button=>{const r=button.getBoundingClientRect();return r.left>=b.left&&r.right<=b.right+1})};
+    });
+    assert.deepEqual(folderLayout,{fits:true,buttonsFit:true},'long saved-folder names fit a 240px sidebar');
+    await page.screenshot({path:join(output,'narrow-folder-tracker.png')});
+    await page.evaluate(()=>window.folderPanel.onClose());
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({passed:true,output,checks:['grouped switches','independent toggles','tracking last','responsive settings','wizard validation and back navigation','visible active tab','grouped tab navigation','chapter templates tool entry','persistent per-file folding','keyboard folding','folder tracker controls and stop']},null,2));
+    console.log(JSON.stringify({passed:true,output,checks:['grouped switches','independent toggles','tracking last','responsive settings','wizard validation and back navigation','visible active tab','grouped tab navigation','chapter templates tool entry','persistent per-file folding','keyboard folding','folder tracker controls and stop','240-900px pane resize without toolbar overlap','240px sidebar with long folder names']},null,2));
 } finally { await browser.close(); }

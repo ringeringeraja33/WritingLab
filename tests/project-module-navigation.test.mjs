@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { build, transform } from 'esbuild';
 import ts from 'typescript';
 
-const bundle = await build({ stdin: { contents: `export * from './models/ProjectCapabilities'; export * from './models/ProjectPages'; export * from './services/ProjectCapabilityService'; export * from './utils/tabStripReorder';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm' });
+const bundle = await build({ stdin: { contents: `export * from './models/ProjectCapabilities'; export * from './models/ProjectPages'; export * from './services/ProjectCapabilityService'; export * from './utils/tabStripReorder'; export * from './models/StoryLineProject';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm' });
 const api = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 const { normalizeProjectCapabilities: normalize, moduleEnabled: enabled, toggleProjectModule: toggle, PROJECT_PAGES } = api;
 const custom = modules => normalize({ version: 2, preset: 'custom', modules });
@@ -198,4 +198,77 @@ test('tab bar drag reorders without disabling modules', async () => {
     const orderFn = mainText.slice(mainText.indexOf('async updateProjectTabOrder'), mainText.indexOf('closeDisabledProjectViews'));
     assert.doesNotMatch(orderFn, /prepareForModuleDisable/);
     assert.match(orderFn, /applyNavigation/);
+});
+
+// Real storage methods against an in-memory vault; no user files are touched.
+const sceneSource = await readFile('services/SceneManager.ts', 'utf8');
+const sceneAst = ts.createSourceFile('SceneManager.ts', sceneSource, ts.ScriptTarget.Latest, true);
+const sceneClass = sceneAst.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'SceneManager');
+const noteMethods = ['ensureProjectModuleStorage', 'getOrCreateSceneNotesFile', 'getSceneNotesFile', 'writeSceneNotes']
+    .map(name => sceneClass.members.find(node => node.name?.getText(sceneAst) === name).getText(sceneAst)).join('\n');
+const noteCode = (await transform(`class SceneNotesProbe { ${noteMethods} }; export { SceneNotesProbe };`, { loader: 'ts', format: 'cjs' })).code;
+function notesFixture() {
+    class File { constructor(path, text) { this.path = path; this.text = text; } }
+    const files = new Map(), folders = [], writes = [], updates = [];
+    const module = { exports: {} };
+    new Function('module', 'TFile', 'normalizePath', 'deriveProjectFoldersFromFilePath', 'resolveManuscriptBinderFolder', 'moduleEnabled', 'usesAuthoredCanvasFolder', noteCode)(
+        module, File, path => path, api.deriveProjectFoldersFromFilePath, api.resolveManuscriptBinderFolder, enabled, api.usesAuthoredCanvasFolder);
+    const probe = new module.exports.SceneNotesProbe();
+    Object.assign(probe, {
+        app: { vault: {
+            getAbstractFileByPath: path => files.get(path),
+            adapter: { exists: async path => files.has(path) },
+            create: async (path, text) => { writes.push(path); files.set(path, new File(path, text)); },
+            modify: async (file, text) => { writes.push(file.path); file.text = text; },
+        } },
+        ensureFolder: async path => { folders.push(path); },
+        getSceneNotesFolder: () => 'Projects/Novel/SceneNotes',
+        getUniqueSceneNotesPath: () => 'Projects/Novel/SceneNotes/Scene - Notes.md',
+        migrateLegacySceneNotesName: async (_scene, file) => file.path,
+        updateScene: async (path, data) => { updates.push({ path, data }); },
+    });
+    return { probe, File, files, folders, writes, updates, scene: { filePath: 'Projects/Novel/Scenes/Scene.md' } };
+}
+
+test('enabling scene notes never scaffolds an empty SceneNotes folder', async () => {
+    const f = notesFixture();
+    for (let i = 0; i < 2; i++) await f.probe.ensureProjectModuleStorage({ filePath: 'Projects/Novel/Novel.md' }, custom(['sceneNotes']));
+    assert.ok(f.folders.includes('Projects/Novel/Scenes'));
+    assert.ok(!f.folders.some(path => path.endsWith('/SceneNotes')));
+    assert.deepEqual(f.writes, []);
+});
+
+test('reading or blurring empty notes does not create folders, files or references', async () => {
+    const f = notesFixture();
+    assert.equal(f.probe.getSceneNotesFile(f.scene), undefined);
+    await f.probe.writeSceneNotes(f.scene, ' \n\t');
+    f.scene.notesFile = 'Projects/Novel/SceneNotes/missing.md';
+    await f.probe.writeSceneNotes(f.scene, '');
+    assert.deepEqual(f.folders, []);
+    assert.deepEqual(f.writes, []);
+    assert.deepEqual(f.updates, []);
+});
+
+test('writing real scene notes creates storage on demand; clearing retains the file', async () => {
+    const f = notesFixture();
+    await f.probe.writeSceneNotes(f.scene, '附注内容\n');
+    const path = f.scene.notesFile;
+    assert.deepEqual(f.folders, ['Projects/Novel/SceneNotes']);
+    assert.equal(f.files.get(path).text, '附注内容\n');
+    assert.equal(f.updates.length, 1);
+    await f.probe.writeSceneNotes(f.scene, '');
+    assert.equal(f.files.get(path).text, '');
+    assert.equal(f.scene.notesFile, path);
+    assert.equal(f.folders.length, 1);
+});
+
+test('existing linked scene notes remain readable and reusable without creating storage', async () => {
+    const f = notesFixture(), path = 'Projects/Novel/SceneNotes/Existing.md';
+    f.files.set(path, new f.File(path, '保留旧附注'));
+    f.scene.notesFile = path;
+    assert.equal(f.probe.getSceneNotesFile(f.scene), path);
+    assert.equal(await f.probe.getOrCreateSceneNotesFile(f.scene), path);
+    assert.equal(f.files.get(path).text, '保留旧附注');
+    assert.deepEqual(f.folders, []);
+    assert.deepEqual(f.writes, []);
 });

@@ -361,16 +361,17 @@ body.narrative-lab-theme-dark .plot-grid-root {
     gap: 6px 8px;
     flex-wrap: wrap;
     min-height: 40px;
+    flex-shrink: 0;
     overflow: visible;
 }
 
 /* Board and spreadsheet use the same two-tier application header:
-   project navigation above, page-specific actions below. A fixed grid keeps
-   both baselines stable instead of relying on incidental flex wrapping. */
+   project navigation above, page-specific actions below. Rows grow when
+   controls wrap; fixed row heights let controls paint over adjacent rows. */
 .story-line-toolbar.sl-two-row-toolbar {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-rows: 28px 28px;
+    grid-template-rows: minmax(28px, auto) minmax(28px, auto);
     column-gap: 8px;
     row-gap: 6px;
     min-height: 74px;
@@ -421,11 +422,12 @@ body.narrative-lab-theme-dark .plot-grid-root {
     font-size: 1.1em;
     font-weight: 600;
     white-space: nowrap;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     height: 28px;
-    padding-top: 1px;
+    line-height: 28px;
     box-sizing: border-box;
 }
 
@@ -436,6 +438,8 @@ body.narrative-lab-theme-dark .plot-grid-root {
     gap: 8px;
     height: 28px;
     flex-shrink: 0;
+    min-width: 0;
+    max-width: 240px;
 }
 /* WritingLab owns its project header. Hide Obsidian's duplicate view header
    (including Commander injections) for every plugin page. The explicit class
@@ -857,6 +861,7 @@ body.narrative-lab-theme-dark .plot-grid-root {
     white-space: nowrap;
     line-height: 1;
     box-sizing: border-box;
+    flex-shrink: 0;
 }
 
 .story-line-view-tab.story-line-view-tab:hover {
@@ -15664,6 +15669,9 @@ body .nl-floating-sticky-save-location input[type="text"] {
     padding: 16px 18px 20px;
     overflow: auto;
     text-align: center;
+    min-width: 0;
+    box-sizing: border-box;
+    container: writing-tracker / inline-size;
 }
 
 .nl-tracker-page {
@@ -15702,6 +15710,7 @@ body .nl-floating-sticky-save-location input[type="text"] {
     align-items: center;
     gap: 18px;
     min-height: calc(100% - 40px);
+    min-width: 0;
 }
 
 .nl-tracker-project-context {
@@ -16765,6 +16774,8 @@ details.sl-manuscript-scene-block:not([open]) > .sl-manuscript-editor-wrap { dis
 .sl-manuscript-scene-header .nl-manuscript-open-file { margin-left: auto; order: 10; padding: 2px 6px; height: 24px; color: var(--text-muted); background: transparent; box-shadow: none; }
 .nl-folder-tracker {
     width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     align-self: stretch;
     text-align: left;
     padding: 10px 12px;
@@ -16780,6 +16791,7 @@ details.sl-manuscript-scene-block:not([open]) > .sl-manuscript-editor-wrap { dis
     align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
+    flex-wrap: wrap;
 }
 .nl-folder-tracker-identity { min-width: 0; }
 .nl-folder-tracker-name {
@@ -16851,7 +16863,18 @@ details.sl-manuscript-scene-block:not([open]) > .sl-manuscript-editor-wrap { dis
     color: var(--text-muted);
     letter-spacing: 0.02em;
 }
-.nl-folder-tracker-saved button { text-align: left; font-size: 13px; }
+.nl-folder-tracker-saved button {
+    text-align: left;
+    font-size: 13px;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 30px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+    padding: 6px 10px;
+}
 .nl-folder-tracker-recursive {
     display: flex;
     align-items: center;
@@ -16863,3 +16886,78 @@ details.sl-manuscript-scene-block:not([open]) > .sl-manuscript-editor-wrap { dis
 .nl-tracker-panel-body > h4 { overflow-wrap: anywhere; }
 .nl-project-structure-tools { width: min(860px, 94vw); }
 .nl-project-structure-tools .beat-sheet-list { margin-bottom: 24px; }
+
+/* Respond to the actual workspace pane, not the whole desktop viewport.
+   ViewSwitcher sets this class from its existing resize observer. */
+.story-line-toolbar.sl-toolbar-narrow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    align-content: start;
+    gap: 8px;
+    padding: 8px 10px;
+}
+.story-line-toolbar.sl-toolbar-narrow > .story-line-title-row,
+.story-line-toolbar.sl-toolbar-narrow > .story-line-view-title {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    max-width: 100%;
+}
+.story-line-toolbar.sl-toolbar-narrow > .story-line-title-row { display: flex; }
+.story-line-toolbar.sl-toolbar-narrow > .story-line-view-actions {
+    grid-column: 2;
+    grid-row: 1;
+    padding-left: 6px;
+}
+.story-line-toolbar.sl-toolbar-narrow > .story-line-view-switcher {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+}
+.story-line-toolbar.sl-toolbar-narrow > .story-line-toolbar-controls {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    width: 100%;
+    margin: 0;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+    white-space: normal;
+}
+.nl-project-settings-button > .view-tab-icon { display: none; }
+.sl-toolbar-narrow .nl-project-settings-button > .view-tab-icon { display: flex; }
+.sl-toolbar-narrow .nl-project-settings-button > .view-tab-label { display: none; }
+.sl-toolbar-narrow .nl-project-settings-button { width: 28px; min-width: 28px; padding-inline: 0; }
+.sl-toolbar-narrow .plot-grid-toolbar-left,
+.sl-toolbar-narrow .plot-grid-toolbar-actions { flex-wrap: wrap; min-width: 0; }
+.sl-toolbar-narrow .story-line-toolbar-controls > .sl-toggle-wrap { flex-shrink: 0; }
+
+/* Native buttons may have a minimum width and nowrap labels. Keep tracker
+   actions inside narrow sidebars, including long saved-folder names. */
+.nl-tracker-panel .nl-tracker-tabs,
+.nl-tracker-page .nl-tracker-tabs { width: 100%; min-width: 0; }
+.nl-tracker-panel .nl-tracker-tab,
+.nl-tracker-page .nl-tracker-tab,
+.nl-tracker-panel .nl-tracker-btn,
+.nl-tracker-page .nl-tracker-btn,
+.nl-folder-tracker-actions button {
+    min-width: 0;
+    height: auto;
+    min-height: 30px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+}
+.nl-tracker-panel-body > *, .nl-tracker-sprint > * { min-width: 0; max-width: 100%; }
+.nl-folder-tracker-status { max-width: 100%; overflow-wrap: anywhere; }
+.nl-folder-tracker > button { min-width: 0; height: auto; min-height: 30px; font-size: 13px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+@container writing-tracker (max-width: 280px) {
+    .nl-tracker-tabs { gap: 4px; }
+    .nl-tracker-tab, .nl-tracker-btn { padding: 6px 4px; }
+    .nl-tracker-duration-row { flex-wrap: wrap; }
+    .nl-tracker-timer-display { font-size: 36px; }
+    .nl-tracker-card-value { font-size: 20px; overflow-wrap: anywhere; }
+}

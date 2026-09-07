@@ -917,7 +917,8 @@ export class SceneManager implements ISceneStore {
         if (capabilities.modules.includes('notes')) await this.ensureFolder(folders.notesFolder);
         if (capabilities.modules.includes('research')) await this.ensureFolder(folders.researchFolder);
         if (capabilities.modules.includes('scenes')) await this.ensureFolder(folders.sceneFolder);
-        if (capabilities.modules.includes('sceneNotes')) await this.ensureFolder(folders.sceneNotesFolder);
+        // SceneNotes is optional per-scene storage, not a project scaffold.
+        // Create it only when a user writes notes or explicitly opens a notes file.
         if (capabilities.modules.includes('library')) {
             await this.ensureFolder(folders.codexFolder);
             const libraryFolders = filterLibraryFoldersForPack(
@@ -3808,6 +3809,9 @@ export class SceneManager implements ISceneStore {
      * Creates the file if it doesn't exist yet.
      */
     async writeSceneNotes(scene: Scene, content: string): Promise<void> {
+        // Blurring an untouched empty editor must not recreate SceneNotes.
+        // Existing notes can still be cleared without deleting their file/link.
+        if (!content.trim() && !this.getSceneNotesFile(scene)) return;
         const notesPath = await this.getOrCreateSceneNotesFile(scene);
         const file = this.app.vault.getAbstractFileByPath(notesPath);
         if (file && file instanceof TFile) {

@@ -1,5 +1,12 @@
 # NarrativeLab — Changelog
 
+## 1.7.2
+
+- Project toolbars respond to the actual workspace pane width. Narrow panes separate the project title and actions, tabs, and page controls; wrapped controls expand their row instead of overlapping navigation.
+- Project settings use an accessible icon in narrow panes. Long project titles truncate, and writing-tracker controls and saved-folder names fit narrow sidebars.
+- SceneNotes storage is created only when a user writes scene notes or explicitly creates a notes file. Project initialization and empty note saves no longer create empty SceneNotes folders; existing notes and links remain intact.
+- Added regression coverage for 240–900 px pane resizing, narrow tracker panels, and lazy scene-note storage.
+
 ## 1.7.0
 
 - Research paper and literature-review projects start in Library with literature, claims, arguments, and facts, and keep fiction character-relation types off the Story Graph.

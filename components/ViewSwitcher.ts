@@ -245,9 +245,11 @@ export function renderViewSwitcher(
     const actions = container.createDiv('story-line-view-actions');
     const settings = actions.createEl('button', {
         cls: 'story-line-view-tab nl-project-settings-button',
-        text: t('Project settings'),
-        attr: { type: 'button' },
+        attr: { type: 'button', 'aria-label': t('Project settings') },
     });
+    obsidian.setIcon(settings.createSpan({ cls: 'view-tab-icon', attr: { 'aria-hidden': 'true' } }), 'settings');
+    settings.createSpan({ cls: 'view-tab-label', text: t('Project settings') });
+    attachTooltip(settings, t('Project settings'));
     settings.addEventListener('click', () => {
         const project = plugin.sceneManager.getProjects().find(p => p.filePath === projectFile);
         if (project) new ProjectModulesModal(plugin.app, plugin, project).open();
@@ -359,6 +361,10 @@ function installTabOverflow(
     });
 
     const measure = () => {
+        if (!switcher.isConnected) return;
+        // Split panes can be narrow on a wide desktop. Reserve separate rows
+        // before measuring tabs so wrapped controls never overlap navigation.
+        parent.classList.toggle('sl-toolbar-narrow', parent.clientWidth <= 640);
         switcher.classList.remove('sl-collapsed');
         parent.classList.remove('sl-toolbar-compact');
         tabs.forEach((tab, index) => { tab.hidden = Boolean(initiallyHidden[index]) && !tab.classList.contains('active'); });
@@ -377,7 +383,10 @@ function installTabOverflow(
         const styles = window.getComputedStyle(parent);
         const gap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
         // title + actions (+ gaps) leave this much room for primary tabs
-        const available = parent.clientWidth - reserved - gap * sameRowSiblings - 8;
+        const available = styles.display === 'grid'
+            ? switcher.clientWidth
+            : parent.clientWidth - reserved - gap * sameRowSiblings
+                - (parseFloat(styles.paddingLeft) || 0) - (parseFloat(styles.paddingRight) || 0);
         const width = () => tabs.reduce((total, tab) => total + (tab.hidden ? 0 : tab.offsetWidth + 4), more.hidden ? 0 : more.offsetWidth + 4);
         if (width() > Math.max(100, available)) {
             more.hidden = false;
