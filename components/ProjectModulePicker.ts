@@ -11,7 +11,7 @@ import { t } from '../utils/i18n';
 export const PROJECT_MODULE_LABELS: Record<ProjectModuleId, string> = {
     manuscript: 'Manuscript', notes: 'Notes', outline: 'Outline',
     writingTracker: 'Writing tracker', writingStats: 'Writing statistics',
-    research: 'Research', library: 'Library', table: 'Table', canvas: 'Presentation',
+    research: 'Research', library: 'Library', table: 'Information table', canvas: 'Presentation',
     scenes: 'Scenes', board: 'Board',
     structure: 'Structure', plotlines: 'Plotlines', timeline: 'Timeline',
     flatCanvas: 'Flat canvas', columnBoard: 'Column board', trackComparison: 'Track comparison',

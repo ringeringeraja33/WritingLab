@@ -59,6 +59,7 @@ const ZH_CORE: Record<string, string> = {
     'Canvases and organization': '画布与整理',
     'Narrative planning': '叙事规划',
     'Organize': '整理',
+    'Information table': '信息表',
     'Presentation': '演示',
     'Tab groups only organize the tab bar. Each page can still be turned on or off in Modules.': '分组只整理入口，各功能仍可独立开关。',
     'Materials and research': '资料与研究',

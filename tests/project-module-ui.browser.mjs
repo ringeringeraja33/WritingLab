@@ -263,6 +263,11 @@ try {
     await page.setViewportSize({width:780,height:850});
     await page.evaluate(()=>window.showTabs());
     await page.waitForTimeout(100);
+    assert.deepEqual(await page.locator('.story-line-view-switcher > [data-group]').evaluateAll(tabs => tabs.slice(0, 2).map(tab => tab.dataset.group)), ['manuscript','informationTable']);
+    assert.ok(await page.locator('[data-group="informationTable"]').filter({hasText:'信息表'}).isVisible());
+    assert.equal(await page.locator('[data-group="informationTable"] .codex-dropdown-chevron').count(),0);
+    await page.locator('[data-group="informationTable"]').click();
+    assert.equal(await page.evaluate(()=>window.lastPage),'narrative-lab-plotgrid');
     assert.ok(await page.locator('.story-line-view-tab').filter({hasText:'整理'}).isVisible());
     assert.ok(await page.locator('.story-line-view-tab').filter({hasText:'叙事规划'}).isVisible());
     assert.ok(await page.locator('.story-line-view-tab.active').isVisible());

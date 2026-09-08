@@ -134,7 +134,9 @@ export function renderViewSwitcher(
         if (isActive && pages.some(page => page.type === activeViewType)) {
             rememberGroupPage(projectFile, group.id, activeViewType);
         }
-        const hasMenu = group.id !== 'manuscript';
+        // Single-page groups switch directly. Library and Presentation keep a
+        // menu because their chevrons expose categories and project canvases.
+        const hasMenu = pages.length > 1 || group.id === 'library' || group.id === 'presentation';
         const tab = switcher.createEl('button', {
             cls: `story-line-view-tab ${isActive ? 'active' : ''}`,
             attr: {

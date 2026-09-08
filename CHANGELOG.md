@@ -1,5 +1,9 @@
 # NarrativeLab — Changelog
 
+## 1.7.3
+
+- The spreadsheet is now a dedicated Information table tab immediately after Manuscript. It opens directly and no longer appears inside the Organize menu.
+
 ## 1.7.2
 
 - Project toolbars respond to the actual workspace pane width. Narrow panes separate the project title and actions, tabs, and page controls; wrapped controls expand their row instead of overlapping navigation.

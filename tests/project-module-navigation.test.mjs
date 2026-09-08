@@ -65,13 +65,15 @@ test('dragged tab order keeps unseen pages after the visible strip', () => {
 });
 
 test('tab groups flatten drag order without dropping later pages', () => {
-    assert.deepEqual(api.PROJECT_TAB_GROUPS.map(group => group.id), ['manuscript', 'organize', 'planning', 'library', 'presentation']);
+    assert.deepEqual(api.PROJECT_TAB_GROUPS.map(group => group.id), ['manuscript', 'informationTable', 'organize', 'planning', 'library', 'presentation']);
+    assert.deepEqual(api.PROJECT_TAB_GROUPS.slice(0, 2).map(group => group.modules), [['manuscript'], ['table']]);
+    assert.equal(api.PROJECT_TAB_GROUPS.find(group => group.id === 'organize').modules.includes('table'), false);
     assert.deepEqual(api.flattenTabGroupOrder(['planning', 'manuscript'], ['manuscript', 'flatCanvas', 'timeline', 'plotList']), [
-        'timeline', 'plotList', 'trackComparison', 'subwayMap', 'manuscript',
-        ...PROJECT_PAGES.map(page => page.module).filter(id => !['timeline', 'plotList', 'trackComparison', 'subwayMap', 'manuscript'].includes(id)),
+        'timeline', 'plotList', 'trackComparison', 'subwayMap', 'manuscript', 'flatCanvas',
+        ...PROJECT_PAGES.map(page => page.module).filter(id => !['timeline', 'plotList', 'trackComparison', 'subwayMap', 'manuscript', 'flatCanvas'].includes(id)),
     ]);
     assert.deepEqual(api.sortTabGroups([...api.PROJECT_TAB_GROUPS], ['timeline', 'manuscript']).map(group => group.id),
-        ['planning', 'manuscript', 'organize', 'library', 'presentation']);
+        ['planning', 'manuscript', 'informationTable', 'organize', 'library', 'presentation']);
 });
 
 test('capability persistence rolls back memory on failure and never deletes files', async () => {

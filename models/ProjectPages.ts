@@ -12,7 +12,7 @@ export interface ProjectPage {
     icon: string;
 }
 
-export type ProjectTabGroupId = 'manuscript' | 'organize' | 'planning' | 'library' | 'presentation';
+export type ProjectTabGroupId = 'manuscript' | 'informationTable' | 'organize' | 'planning' | 'library' | 'presentation';
 
 export interface ProjectTabGroup {
     id: ProjectTabGroupId;
@@ -24,7 +24,8 @@ export interface ProjectTabGroup {
 /** Tab bar folders. Grouping only organizes entries; modules stay independently toggleable. */
 export const PROJECT_TAB_GROUPS: readonly ProjectTabGroup[] = [
     { id: 'manuscript', label: 'Manuscript', icon: 'book-open-text', modules: ['manuscript'] },
-    { id: 'organize', label: 'Organize', icon: 'layout-dashboard', modules: ['flatCanvas', 'columnBoard', 'table'] },
+    { id: 'informationTable', label: 'Information table', icon: 'table', modules: ['table'] },
+    { id: 'organize', label: 'Organize', icon: 'layout-dashboard', modules: ['flatCanvas', 'columnBoard'] },
     { id: 'planning', label: 'Narrative planning', icon: 'git-branch', modules: ['timeline', 'trackComparison', 'plotList', 'subwayMap'] },
     { id: 'library', label: 'Library', icon: 'library-big', modules: ['library'] },
     { id: 'presentation', label: 'Presentation', icon: 'monitor-play', modules: ['canvas'] },
@@ -88,9 +89,9 @@ export function flattenTabGroupOrder(
 
 export const PROJECT_PAGES: readonly ProjectPage[] = [
     { module: 'manuscript', type: MANUSCRIPT_VIEW_TYPE, label: 'Manuscript', icon: 'book-open-text' },
+    { module: 'table', type: PLOTGRID_VIEW_TYPE, label: 'Information table', icon: 'table' },
     { module: 'flatCanvas', type: BOARD_VIEW_TYPE, label: 'Flat canvas', icon: 'layout-dashboard' },
     { module: 'columnBoard', type: COLUMN_BOARD_VIEW_TYPE, label: 'Column board', icon: 'columns-3' },
-    { module: 'table', type: PLOTGRID_VIEW_TYPE, label: 'Table', icon: 'table' },
     { module: 'timeline', type: TIMELINE_VIEW_TYPE, label: 'Timeline', icon: 'list-ordered' },
     { module: 'trackComparison', type: TRACK_COMPARISON_VIEW_TYPE, label: 'Track comparison', icon: 'columns-2' },
     { module: 'plotList', type: STORYLINE_VIEW_TYPE, label: 'Plot list', icon: 'list' },
