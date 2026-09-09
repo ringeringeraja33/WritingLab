@@ -159,7 +159,7 @@ window.showFolderTracker=async(width)=>{
  scope.setText('日记/随笔/一.md','这是已有的文稿内容。',false);scope.tracker.startSession(scope.totalWords,true);
  let panel;
  const folderService={current:scope,ready:true,busy:false,error:'',savedScopes:[scope.config],scheduleSave(){},
- async stop(){this.current=null;this.ready=false;panel.refresh()},async select(){this.current=scope;this.ready=true;panel.refresh()}};
+ async stop(){this.savedScopes=this.savedScopes.filter(s=>s.id!==this.current.config.id);this.current=null;this.ready=false;panel.refresh()},async select(){this.current=scope;this.ready=true;panel.refresh()}};
  const trackerPlugin={...plugin,writingTracker:new WritingTracker(),globalWritingTracker:{tracker:new WritingTracker()},folderWritingTracker:folderService,
  app:{...plugin.app,workspace:{...plugin.app.workspace,requestSaveLayout(){}}},scheduleWritingTrackerSave(){},saveSettings:async()=>{}};
  panel=new WritingTrackerPanel({app:trackerPlugin.app},trackerPlugin);if(width)panel.containerEl.style.width=width+'px';await panel.onOpen();panel.setScope('folder');window.folderPanel=panel;
@@ -318,21 +318,24 @@ try {
     await page.setViewportSize({width:400,height:900});
     await page.evaluate(()=>window.showFolderTracker());
     assert.ok(await page.getByText('日记/随笔',{exact:true}).isVisible());
-    assert.ok(await page.getByText('只统计当前选中的文件夹',{exact:false}).isVisible());
+    assert.equal(await page.locator('.nl-folder-tracker-hint, .nl-folder-tracker-footnote').count(),0);
+    assert.ok(await page.getByText('已加入统计',{exact:true}).isVisible());
+    await page.evaluate(()=>{window.folderService.current.tracker.setProjectFilesOpen(false);window.folderPanel.refresh()});
+    assert.ok(await page.getByText('已加入统计',{exact:true}).isVisible(),'closed documents do not remove a folder from tracking');
     assert.ok(await page.getByText('写作冲刺',{exact:true}).isVisible());
     assert.equal(await page.evaluate(()=>window.folderPanel.getState().writingTrackerScope),'folder');
     await page.screenshot({path:join(output,'folder-tracker.png')});
-    await page.getByRole('button',{name:'停止文件夹统计',exact:true}).click();
-    assert.ok(await page.getByRole('button',{name:'开始统计文件夹',exact:true}).isVisible());
-    assert.ok(await page.getByRole('button',{name:'日记/随笔 · 包含子文件夹',exact:true}).isVisible());
-    assert.ok(await page.getByText('现在不会记录任何文件夹的新写作',{exact:false}).isVisible());
+    await page.getByRole('button',{name:'移出统计列表',exact:true}).click();
+    assert.ok(await page.getByRole('button',{name:'添加统计文件夹',exact:true}).isVisible());
+    assert.equal(await page.getByRole('button',{name:'日记/随笔 · 包含子文件夹',exact:true}).count(),0);
+    assert.equal(await page.locator('.nl-folder-tracker-hint, .nl-folder-tracker-footnote').count(),0);
     assert.equal(await page.locator('select').count(),0,'idle state has no placeholder dropdown');
     assert.equal(await page.getByText('写作冲刺',{exact:true}).count(),0,'stopped scope does not display another tracker');
     await page.evaluate(()=>window.folderPanel.onClose());
     await page.setViewportSize({width:1400,height:900});
     await page.evaluate(()=>window.showFolderTracker(240));
     assert.ok(await page.getByRole('button',{name:'开始',exact:true}).isVisible());
-    await page.getByRole('button',{name:'停止文件夹统计',exact:true}).click();
+    await page.getByRole('button',{name:'移出统计列表',exact:true}).click();
     await page.evaluate(()=>{
         window.folderService.savedScopes=[{id:'long',path:'Projects/一个名称很长的资料目录/LongFolderNameWithoutAnyBreaksForWritingStatistics',recursive:true}];
         window.folderPanel.refresh();

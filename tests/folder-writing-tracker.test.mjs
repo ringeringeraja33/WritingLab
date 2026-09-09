@@ -57,19 +57,19 @@ const serviceBuild=await build({stdin:{resolveDir:process.cwd(),contents:`export
 const {FolderWritingTracker,TFile,TFolder,MarkdownView}=await import(`data:text/javascript;base64,${Buffer.from(serviceBuild.outputFiles[0].text).toString('base64')}`);
 globalThis.window=globalThis;
 function harness(stored={}) {
-    const files=new Map(),disk=new Map(Object.entries(stored)),events=new Map(),cleanups=[],leaves=[];
+    const files=new Map(),disk=new Map(Object.entries(stored)),events=new Map(),cleanups=[],leaves=[],reads=[],layoutReady=[];
     const on=(event,fn)=>{const handlers=events.get(event)||[];handlers.push(fn);events.set(event,handlers);return {event,fn}};
     const emit=(event,...args)=>{for(const fn of events.get(event)||[])fn(...args)};
     const writes=[];
     const app={vault:{configDir:'.obsidian',on,getAbstractFileByPath:path=>files.get(path),
-        cachedRead:async file=>disk.get(file.path)||'',adapter:{exists:async path=>disk.has(path),read:async path=>disk.get(path),write:async(path,text)=>{writes.push(path);disk.set(path,text)},remove:async path=>disk.delete(path)}},
-        workspace:{on,onLayoutReady(){},iterateAllLeaves:fn=>leaves.forEach(fn),getLeavesOfType:()=>[]}};
+        cachedRead:async file=>{reads.push(file.path);return disk.get(file.path)||''},adapter:{exists:async path=>disk.has(path),read:async path=>disk.get(path),write:async(path,text)=>{writes.push(path);disk.set(path,text)},remove:async path=>disk.delete(path)}},
+        workspace:{on,onLayoutReady:fn=>layoutReady.push(fn),iterateAllLeaves:fn=>leaves.forEach(fn),getLeavesOfType:()=>[]}};
     const plugin={app,manifest:{id:'narrative-lab',dir:'.obsidian/plugins/narrative-lab'},settings:{},registerEvent(){},register:fn=>cleanups.push(fn)};
     const service=new FolderWritingTracker(plugin);service.initialize();
     const addFolder=(path,content='one two')=>{const file=new TFile(path+'/a.md'),folder=new TFolder(path,[file]);files.set(path,folder);files.set(file.path,file);disk.set(file.path,content);return {file,folder}};
     const edit=(file,text)=>{let view=leaves.find(l=>l.view.file===file)?.view;if(!view){view=new MarkdownView();view.file=file;leaves.push({view});}view.editor={getValue:()=>text};emit('file-open',file);emit('editor-change',view.editor,view);};
     const close=async()=>{for(const fn of cleanups)fn();await service.writes;};
-    return {service,files,disk,writes,events,emit,addFolder,edit,close};
+    return {service,files,disk,writes,events,emit,addFolder,edit,close,reads,leaves,plugin,layoutReady};
 }
 const ledger='.obsidian/plugins/narrative-lab/folder-writing-tracker.json';
 
@@ -148,13 +148,17 @@ test('removed source folder pauses activity without erasing history',async()=>{
         assert.equal(h.service.current.tracker.getTodayWords(),1);
     }finally{await h.close()}
 });
-test('folder tracker chrome states the active-only recording rule and has no empty dropdown option',async()=>{
+test('folder tracker chrome distinguishes recording membership from displayed statistics',async()=>{
     const source=await readFile('components/FolderTrackerControls.ts','utf8');
     const panel=await readFile('views/WritingTrackerPanel.ts','utf8');
     assert.doesNotMatch(source,/createEl\('option'[\s\S]*Choose folder/);
-    assert.match(source,/No folder is recording new writing/);
-    assert.match(source,/Only this folder records new writing/);
-    assert.match(source,/Resume tracking/);
+    assert.match(source,/All listed folders record edits independently/);
+    assert.match(source,/Switching here only changes the statistics shown/);
+    assert.match(source,/View folder statistics/);
+    assert.match(source,/Remove from tracking list/);
+    assert.doesNotMatch(source,/Other saved folders are not counting|Only this folder records/);
+    assert.doesNotMatch(source,/service.ready && current.tracker.isProjectFilesOpen/);
+    assert.doesNotMatch(source,/nl-folder-tracker-(hint|footnote)/,'explanatory paragraphs are not rendered');
     assert.match(panel,/renderFolderTrackerControls\(body, this\.plugin\)/);
     assert.doesNotMatch(panel,/nl-folder-tracker-title/);
 });
@@ -162,10 +166,157 @@ test('stopping and resuming retains history without counting the tracking gap',a
     const h=harness();const {file}=h.addFolder('Notes');
     try{await h.service.select('Notes');h.edit(file,'one two three');await h.service.stop();
         assert.equal(h.service.current,null);assert.equal(JSON.parse(h.disk.get(ledger)).selected,'');
+        assert.equal(h.service.savedScopes.length,0);
+        assert.equal(JSON.parse(h.disk.get(ledger)).scopes[0].enabled,false);
         h.edit(file,'one two three four five');await h.service.select('Notes');
         assert.equal(h.service.current.tracker.getTodayWords(),1);
         assert.equal(h.service.current.tracker.getSessionWords(h.service.current.totalWords),0);
     }finally{await h.close()}
+});
+
+test('all listed folders count with no statistics leaves, regardless of the displayed folder',async()=>{
+    const h=harness(),a=h.addFolder('A'),b=h.addFolder('B');
+    try {
+        await h.service.select('A');const scopeA=h.service.current;
+        await h.service.select('B');const scopeB=h.service.current;
+        h.edit(a.file,'one two three');h.edit(b.file,'one two three four');
+        assert.equal(h.service.current,scopeB);
+        assert.equal(scopeA.tracker.getTodayWords(),1);assert.equal(scopeB.tracker.getTodayWords(),2);
+        h.service.current=null; // Closing/clearing the display cannot disable recording.
+        h.edit(a.file,'one two three four');h.edit(b.file,'one two three four five');
+        await h.service.save();
+        const entries=JSON.parse(h.disk.get(ledger)).scopes;
+        assert.deepEqual(entries.map(e=>e.totalWords),[4,5]);
+        assert.equal(scopeA.tracker.getTodayWords(),2);assert.equal(scopeB.tracker.getTodayWords(),3);
+        assert.ok(h.writes.every(path=>path.startsWith(ledger)));
+    } finally {await h.close()}
+});
+
+test('switching display retains session and sprint objects without rescanning files',async()=>{
+    const h=harness(),a=h.addFolder('A');h.addFolder('B');
+    try {
+        await h.service.select('A');const aScope=h.service.current;
+        h.edit(a.file,'one two three');aScope.tracker.startSprint(3,Date.now()-1000);
+        await h.service.select('B');const readCount=h.reads.length;
+        h.edit(a.file,'one two three four');
+        await Promise.all([h.service.select('A'),h.service.select('B'),h.service.select('A')]);
+        assert.equal(h.service.current,aScope);assert.equal(h.reads.length,readCount);
+        assert.equal(aScope.tracker.isSprintRunning(),true);
+        assert.equal(aScope.tracker.isProjectFilesOpen(),true);
+        assert.equal(aScope.tracker.getSprintWords(aScope.totalWords),1);
+        assert.equal(aScope.tracker.getSessionWords(aScope.totalWords),2);
+        assert.ok(aScope.tracker.getSprintElapsed()>=1000);
+    } finally {await h.close()}
+});
+
+test('startup resumes all legacy listed scopes with no selected folder or tracker view',async()=>{
+    const configs=['A','B','Archived'].map(path=>({id:path,path,recursive:true,locale:'auto',tracker:{history:{'2026-09-01':7}},...(path==='Archived'?{enabled:false}:{})}));
+    const h=harness({[ledger]:JSON.stringify({version:1,selected:'',scopes:configs})});
+    const a=h.addFolder('A'),b=h.addFolder('B'),archived=h.addFolder('Archived');
+    try {
+        h.layoutReady.forEach(fn=>fn());await new Promise(resolve=>setTimeout(resolve,5));await h.service.loadTask;
+        assert.equal(h.service.current,null);assert.deepEqual(h.service.savedScopes.map(s=>s.path),['A','B']);
+        assert.deepEqual(h.reads.sort(),['A/a.md','B/a.md']);
+        h.edit(a.file,'one two three');h.edit(b.file,'one two three four');h.edit(archived.file,'one two three four five');
+        await h.service.save();
+        const saved=JSON.parse(h.disk.get(ledger));
+        assert.deepEqual(saved.scopes.map(s=>s.tracker.history['2026-09-01']),[7,7,7]);
+        assert.equal(h.service.scopes.get('A').tracker.getTodayWords(),1);
+        assert.equal(h.service.scopes.get('B').tracker.getTodayWords(),2);
+        assert.equal(saved.scopes[2].enabled,false);assert.equal(h.service.scopes.has('Archived'),false);
+    } finally {await h.close()}
+});
+
+test('nested scopes independently count shared edits once; save echoes and imports remain inventory',async()=>{
+    const h=harness(),root=h.addFolder('Notes'),sub=h.addFolder('Notes/Sub');root.folder.children.push(sub.folder);
+    try {
+        await h.service.select('Notes');const recursive=h.service.current;
+        await h.service.select('Notes',false);const shallow=h.service.current;
+        await h.service.select('Notes/Sub');const nested=h.service.current;
+        h.edit(sub.file,'one two three');await h.service.readInventory(sub.file);
+        h.edit(sub.file,'one two three');h.edit(root.file,'one two three four');
+        assert.deepEqual([recursive,shallow,nested].map(s=>s.tracker.getTodayWords()),[3,2,1]);
+        h.leaves.length=0;h.emit('file-open',null);
+        h.disk.set(sub.file.path,'imported replacement with many more words');await h.service.readInventory(sub.file);
+        assert.deepEqual([recursive,shallow,nested].map(s=>s.tracker.getTodayWords()),[3,2,1]);
+        assert.deepEqual([recursive,shallow,nested].map(s=>s.tracker.isProjectFilesOpen()),[false,false,false]);
+    } finally {await h.close()}
+});
+
+test('removing one scope leaves other scopes recording and preserves archived history across restart',async()=>{
+    const h=harness(),a=h.addFolder('A'),b=h.addFolder('B');let restored;
+    try {
+        await h.service.select('A');const aScope=h.service.current;
+        await h.service.select('B');const bId=h.service.current.config.id;
+        h.edit(b.file,'one two three');await h.service.stop();
+        assert.equal(h.service.current,aScope);assert.deepEqual(h.service.savedScopes.map(s=>s.path),['A']);
+        h.edit(a.file,'one two three four');h.edit(b.file,'one two three four five');await h.service.save();
+        assert.equal(aScope.tracker.getTodayWords(),2);
+        restored=harness({[ledger]:h.disk.get(ledger)});restored.addFolder('A','one two three four');const resumed=restored.addFolder('B','one two three four five');
+        await restored.service.load();assert.deepEqual(restored.service.savedScopes.map(s=>s.path),['A']);
+        await restored.service.select('B');assert.equal(restored.service.current.config.id,bId);
+        assert.equal(restored.service.current.tracker.getTodayWords(),1);
+        restored.edit(resumed.file,'one two three four five six');
+        assert.equal(restored.service.current.tracker.getTodayWords(),2);
+        assert.equal(restored.service.current.tracker.getSessionWords(6),1);
+    } finally {await h.close();if(restored)await restored.close()}
+});
+
+test('a background folder can be renamed, removed and restored without disturbing other histories',async()=>{
+    const h=harness(),a=h.addFolder('A'),b=h.addFolder('B');
+    try {
+        await h.service.select('B');const scopeB=h.service.current;h.edit(b.file,'one two three');
+        await h.service.select('A');const scopeA=h.service.current;
+        h.files.delete('B');h.files.delete(b.file.path);b.folder.path='Renamed';b.file.path='Renamed/a.md';h.files.set(b.folder.path,b.folder);h.files.set(b.file.path,b.file);
+        h.emit('rename',b.folder,'B');await Promise.all(h.service.indexing.values());
+        assert.equal(h.service.current,scopeA);assert.equal(scopeB.config.path,'Renamed');
+        h.edit(b.file,'one two three four');assert.equal(scopeB.tracker.getTodayWords(),2);
+        h.files.delete('Renamed');h.files.delete(b.file.path);h.emit('delete',b.folder);
+        h.edit(a.file,'one two three');assert.equal(scopeA.tracker.getTodayWords(),1);
+        await h.service.select('Renamed');assert.equal(h.service.ready,false);assert.match(h.service.error,/unavailable/);
+        h.files.set('Renamed',b.folder);h.files.set(b.file.path,b.file);h.emit('create',b.folder);await Promise.all(h.service.indexing.values());
+        assert.equal(h.service.ready,true);assert.equal(scopeB.tracker.getTodayWords(),2);
+        assert.equal(scopeB.tracker.getSessionWords(scopeB.totalWords),2);
+    } finally {await h.close()}
+});
+
+test('a delayed disk read cannot revert newer edits in a background scope',async()=>{
+    const h=harness(),a=h.addFolder('A');h.addFolder('B');
+    try {
+        await h.service.select('A');const scope=h.service.current;await h.service.select('B');
+        let resolveRead;h.plugin.app.vault.cachedRead=()=>new Promise(resolve=>{resolveRead=resolve});
+        const read=h.service.readInventory(a.file);h.edit(a.file,'one two three');
+        resolveRead('one two');await read;
+        assert.equal(scope.totalWords,3);assert.equal(scope.tracker.getTodayWords(),1);
+        h.edit(a.file,'one two three four');assert.equal(scope.tracker.getTodayWords(),2);
+    } finally {await h.close()}
+});
+
+test('initial indexing yields without losing edits to already indexed files',async()=>{
+    const h=harness(),a=h.addFolder('A');
+    const second=new TFile('A/b.md');a.folder.children.push(second);h.files.set(second.path,second);h.disk.set(second.path,'old prose');
+    let releaseRead,readStarted;
+    const started=new Promise(resolve=>{readStarted=resolve});
+    const original=h.plugin.app.vault.cachedRead;
+    h.plugin.app.vault.cachedRead=file=>file===second?new Promise(resolve=>{releaseRead=resolve;readStarted()}):original(file);
+    try {
+        const selection=h.service.select('A');await started;
+        h.edit(a.file,'one two three');releaseRead('old prose');await selection;
+        assert.equal(h.service.current.totalWords,5);
+        assert.equal(h.service.current.tracker.getTodayWords(),1);
+        assert.equal(h.service.current.tracker.getSessionWords(5),1);
+    } finally {await h.close()}
+});
+
+test('overlapping startup scopes share reads; unrelated folder creation never triggers indexing',async()=>{
+    const scopes=['Notes','Notes/Sub'].map(path=>({id:path,path,recursive:true,locale:'auto',tracker:{history:{}}}));
+    const h=harness({[ledger]:JSON.stringify({version:1,selected:'Notes',scopes})});
+    const a=h.addFolder('Notes'),b=h.addFolder('Notes/Sub');a.folder.children.push(b.folder);
+    try {
+        await h.service.load();assert.deepEqual(h.reads.sort(),['Notes/Sub/a.md','Notes/a.md'].sort());
+        let scans=0;const indexScope=h.service.indexScope.bind(h.service);h.service.indexScope=scope=>{scans++;return indexScope(scope)};
+        h.emit('create',new TFolder('Unrelated'));assert.equal(scans,0);
+    } finally {await h.close()}
 });
 test('manuscript folding preserves editors and keeps search targets expandable',async()=>{
     const source=await readFile('views/ManuscriptView.ts','utf8');

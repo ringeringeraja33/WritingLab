@@ -8,6 +8,17 @@ It does not reconstruct writing history from existing documents or file timestam
   source, excluding the manifest, hidden paths and supporting asset/library folders.
 - All projects: the sum of recorded project histories. Folder history is independent
   and is never added again to the project aggregate.
+- Folder list: every listed folder records edits independently while the plugin is
+  running, including when its statistics are not selected or the sidebar is closed.
+  Selection only changes the displayed figures; it does not rescan files, reset
+  the session, or stop a sprint. All listed scopes resume after workspace startup.
+- Removing a folder from the tracking list stops only that scope and retains its
+  history. Re-adding the same folder and recursion setting resumes its ledger with
+  a fresh inventory baseline. Changes made while removed or while the app was
+  closed are not counted retroactively. No source folders or documents are deleted.
+- Overlapping scopes each count matching edits once in their own ledger. They are
+  not summed into a folder-wide aggregate. Session and sprint clocks run while
+  matching document files are open, independently of the statistics display.
 - Net words: additions minus deletions in existing tracked text. Repeated refreshes
   and save echoes do not add a second entry. Replacements of equal token count have
   zero net words and positive revision volume.

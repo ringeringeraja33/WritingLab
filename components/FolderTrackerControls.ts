@@ -30,7 +30,7 @@ export function renderFolderTrackerControls(parent: HTMLElement, plugin: SceneCa
     const current = service.current;
 
     if (current) {
-        const recording = service.ready && current.tracker.isProjectFilesOpen();
+        const recording = service.ready;
         const head = card.createDiv('nl-folder-tracker-head');
         const identity = head.createDiv('nl-folder-tracker-identity');
         identity.createDiv({ cls: 'nl-folder-tracker-name', text: folderLeafName(current.config.path) });
@@ -39,17 +39,15 @@ export function renderFolderTrackerControls(parent: HTMLElement, plugin: SceneCa
         }
         const status = head.createDiv({
             cls: 'nl-folder-tracker-status' + (service.busy ? '' : recording ? ' is-recording' : ' is-paused'),
-            text: service.busy ? t('Indexing folder...') : recording ? t('Recording this folder') : t('Paused'),
+            text: service.busy ? t('Indexing folder...') : recording ? t('Tracking enabled') : t('Folder unavailable'),
         });
-        status.setAttr('title', recording
-            ? t('Only this folder records new writing. Other saved folders keep history but are not counting.')
-            : t('Open a note in this folder to record. Other saved folders are not counting.'));
+        status.setAttr('title', t('All listed folders record edits independently. Switching here only changes the statistics shown.'));
 
         const meta = card.createDiv('nl-folder-tracker-meta');
         meta.createSpan({
             text: service.ready
                 ? t('{n} documents · {words} words', { n: current.texts.size, words: current.totalWords.toLocaleString() })
-                : t('Indexing folder...'),
+                : service.busy ? t('Indexing folder...') : t('Folder unavailable'),
         });
         const row = meta.createEl('label', {
             cls: 'nl-folder-tracker-recursive',
@@ -61,16 +59,9 @@ export function renderFolderTrackerControls(parent: HTMLElement, plugin: SceneCa
         row.createSpan({ text: t('Include subfolders') });
         checkbox.addEventListener('change', () => choose(current.config.path, checkbox.checked));
 
-        card.createEl('p', {
-            cls: 'nl-folder-tracker-hint',
-            text: recording
-                ? t('Only this folder records new writing. Other saved folders keep history but are not counting.')
-                : t('Open a note in this folder to record. Other saved folders are not counting.'),
-        });
-
         const actions = card.createDiv('nl-folder-tracker-actions');
         if (service.savedScopes.length > 1) {
-            const select = actions.createEl('select', { attr: { 'aria-label': t('Tracked folder') } });
+            const select = actions.createEl('select', { attr: { 'aria-label': t('View folder statistics') } });
             for (const entry of service.savedScopes) {
                 select.createEl('option', { text: scopeLabel(entry), attr: { value: entry.id } });
             }
@@ -84,20 +75,20 @@ export function renderFolderTrackerControls(parent: HTMLElement, plugin: SceneCa
         const add = actions.createEl('button', { text: t('Track another folder'), attr: { type: 'button' } });
         add.disabled = service.busy;
         add.addEventListener('click', pickFolder);
-        const stop = actions.createEl('button', { text: t('Stop folder tracking'), attr: { type: 'button' } });
+        const stop = actions.createEl('button', {
+            text: t('Remove from tracking list'),
+            attr: { type: 'button', title: t('Removing stops this scope only and keeps its history. Re-add it to resume.') },
+        });
         stop.disabled = service.busy;
         stop.addEventListener('click', () => { void service.stop().catch(error => new Notice(String(error))); });
     } else {
         const head = card.createDiv('nl-folder-tracker-head');
         head.createDiv({ cls: 'nl-folder-tracker-name', text: t('No folder selected') });
-        head.createDiv({ cls: 'nl-folder-tracker-status is-idle', text: t('Not tracking') });
-        card.createEl('p', {
-            cls: 'nl-folder-tracker-hint',
-            text: t('No folder is recording new writing. Saved folders keep their history; select one to continue counting.'),
-        });
+        head.createDiv({ cls: 'nl-folder-tracker-status' + (service.savedScopes.length ? ' is-recording' : ' is-idle'),
+            text: service.savedScopes.length ? t('Tracking enabled') : t('Not tracking') });
         if (service.savedScopes.length) {
             const list = card.createDiv('nl-folder-tracker-saved');
-            list.createSpan({ cls: 'nl-folder-tracker-saved-label', text: t('Resume tracking') });
+            list.createSpan({ cls: 'nl-folder-tracker-saved-label', text: t('View folder statistics') });
             for (const entry of service.savedScopes) {
                 const resume = list.createEl('button', { text: scopeLabel(entry), attr: { type: 'button' } });
                 resume.disabled = service.busy;
@@ -109,9 +100,5 @@ export function renderFolderTrackerControls(parent: HTMLElement, plugin: SceneCa
         start.addEventListener('click', pickFolder);
     }
 
-    card.createEl('p', {
-        cls: 'nl-folder-tracker-footnote',
-        text: t('Existing text is not counted as new writing. Each folder scope keeps its own history.'),
-    });
     if (service.error) card.createEl('p', { cls: 'nl-tracker-empty', text: service.error });
 }

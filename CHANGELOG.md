@@ -1,5 +1,13 @@
 # NarrativeLab — Changelog
 
+## 1.7.4
+
+- Every folder in the tracking list records edits independently while the plugin is running, even when its statistics are not selected or the sidebar is closed. All listed scopes resume after workspace startup.
+- Switching the displayed folder preserves its session and sprint without rescanning files. Overlapping scopes maintain separate ledgers, and stale disk reads cannot replace newer edits.
+- Removing a folder from the tracking list stops only that scope and retains its history. Re-adding the same scope resumes recording with a fresh baseline; source documents are never deleted.
+- Removed explanatory paragraphs from the folder statistics card while retaining names, status, counts, controls, and contextual tooltips.
+- Added regression coverage for background counting, display switching, restart recovery, overlapping folders, removal and re-adding, and indexing races.
+
 ## 1.7.3
 
 - The spreadsheet is now a dedicated Information table tab immediately after Manuscript. It opens directly and no longer appears inside the Organize menu.

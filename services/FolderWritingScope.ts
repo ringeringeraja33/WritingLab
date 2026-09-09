@@ -7,6 +7,8 @@ export interface FolderScopeConfig {
     recursive: boolean;
     locale: string;
     tracker: WritingTrackerData;
+    /** Missing on legacy records: all listed scopes record by default. */
+    enabled?: boolean;
     totalWords?: number;
     sprintInventoryTotal?: number;
 }
