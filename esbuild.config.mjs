@@ -1,6 +1,6 @@
 import esbuild from "esbuild";
 import process from "process";
-import { copyFileSync, existsSync, readFileSync, readdirSync, realpathSync } from "fs";
+import { copyFileSync, existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { basename, delimiter, dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -106,6 +106,13 @@ function deployPluginFiles() {
   }
 }
 
+function normalizeGeneratedMain() {
+  const output = join(projectRoot, "main.js");
+  const source = readFileSync(output, "utf8");
+  const normalized = source.replace(/[ \t]+$/gm, "");
+  if (normalized !== source) writeFileSync(output, normalized);
+}
+
 function secureExcelJsBrowserBundle() {
   const unsafeUuidV35 = "o){a=a||0;for(let e=0;e<16;++e)o[a+e]=l[e];return o}";
   const safeUuidV35 = "o){if(a=a||0,a<0||a+16>o.length)throw new RangeError(\"UUID byte range is out of buffer bounds\");for(let e=0;e<16;++e)o[a+e]=l[e];return o}";
@@ -176,6 +183,7 @@ const mainContext = await esbuild.context({
         build.onEnd((result) => {
           if (result.errors.length === 0) {
             try {
+              normalizeGeneratedMain();
               deployPluginFiles();
             } catch (err) {
               console.warn("[deploy] skipped:", err instanceof Error ? err.message : err);
