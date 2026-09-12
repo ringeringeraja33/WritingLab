@@ -11,7 +11,12 @@ import {
 } from '../models/ProjectCapabilities';
 import { t } from '../utils/i18n';
 import { renderProjectModulePicker } from './ProjectModulePicker';
-import { PROJECT_PAGES, PROJECT_TAB_GROUPS } from '../models/ProjectPages';
+import {
+    PROJECT_PAGES,
+    PROJECT_TAB_GROUPS,
+    sortByProjectPageOrder,
+    sortTabGroups,
+} from '../models/ProjectPages';
 export { PROJECT_MODULE_LABELS } from './ProjectModulePicker';
 
 export const PROJECT_PRESET_LABELS: Record<ProjectPresetId, string> = {
@@ -127,45 +132,59 @@ export class ProjectModulesModal extends Modal {
         const layoutBody = panels.layout;
         const renderLayout = () => {
             layoutBody.empty();
-            new Setting(layoutBody).setName(t('Default project page')).addDropdown(dropdown => {
+            const defaultPage = new Setting(layoutBody).setName(t('Default project page')).addDropdown(dropdown => {
                 dropdown.addOption('', t('Automatic'));
                 for (const page of PROJECT_PAGES.filter(page => this.selected.has(page.module))) dropdown.addOption(page.module, t(page.label));
                 dropdown.setValue(this.navigation.defaultPage ?? '');
                 dropdown.onChange(value => { this.navigation.defaultPage = value ? value as ProjectModuleId : undefined; });
             });
-            layoutBody.createEl('p', { text: t('Tab groups only organize the tab bar. Each page can still be turned on or off in Modules.'), cls: 'setting-item-description' });
-            layoutBody.createEl('p', { text: t('Hidden tabs remain available in More. Modules and files are not disabled.'), cls: 'setting-item-description' });
+            defaultPage.settingEl.addClass('nl-layout-default-page');
+            const help = layoutBody.createDiv('nl-layout-help');
+            help.createEl('p', { text: t('Tab groups only organize the tab bar. Each page can still be turned on or off in Modules.') });
+            help.createEl('p', { text: t('Hidden tabs remain available in More. Modules and files are not disabled.') });
             const order = [...new Set([...this.navigation.order, ...PROJECT_PAGES.map(page => page.module)])];
-            const pages = order.map(id => PROJECT_PAGES.find(page => page.module === id)).filter(page => page && this.selected.has(page.module));
-            let lastGroup = '';
-            for (const [index, page] of pages.entries()) {
-                if (!page) continue;
-                const group = PROJECT_TAB_GROUPS.find(item => item.modules.includes(page.module));
-                if (group && group.id !== lastGroup) {
-                    lastGroup = group.id;
-                    layoutBody.createEl('h4', { text: t(group.label), cls: 'nl-layout-group-heading' });
+            const groupedPages = sortTabGroups([...PROJECT_TAB_GROUPS], order).map(group => ({
+                group,
+                pages: sortByProjectPageOrder(
+                    PROJECT_PAGES.filter(page => group.modules.includes(page.module) && this.selected.has(page.module)),
+                    order,
+                ),
+            })).filter(item => item.pages.length);
+            const pages = groupedPages.flatMap(item => item.pages);
+            const groupsEl = layoutBody.createDiv('nl-layout-groups');
+            for (const { group, pages: groupPages } of groupedPages) {
+                const section = groupsEl.createDiv(`nl-layout-group${groupPages.length === 1 ? ' is-single' : ''}`);
+                if (groupPages.length > 1) {
+                    const heading = section.createDiv('nl-layout-group-heading');
+                    setIcon(heading.createSpan({ cls: 'nl-layout-group-icon', attr: { 'aria-hidden': 'true' } }), group.icon);
+                    heading.createEl('h4', { text: t(group.label) });
                 }
-                const setting = new Setting(layoutBody).setName(t(page.label));
-                setting.addButton(button => button.setIcon('arrow-up').setTooltip(t('Move up')).setDisabled(index === 0).onClick(() => {
-                    const previous = pages[index - 1];
-                    if (!previous) return;
-                    const a = order.indexOf(page.module), b = order.indexOf(previous.module);
-                    [order[a], order[b]] = [order[b], order[a]];
-                    this.navigation.order = order;
-                    renderLayout();
-                }));
-                setting.addButton(button => button.setIcon('arrow-down').setTooltip(t('Move down')).setDisabled(index === pages.length - 1).onClick(() => {
-                    const next = pages[index + 1];
-                    if (!next) return;
-                    const a = order.indexOf(page.module), b = order.indexOf(next.module);
-                    [order[a], order[b]] = [order[b], order[a]];
-                    this.navigation.order = order;
-                    renderLayout();
-                }));
-                setting.addToggle(toggle => toggle.setValue(!this.navigation.hidden.includes(page.module)).setTooltip(t('Show in tab bar')).onChange(show => {
-                    this.navigation.hidden = this.navigation.hidden.filter(id => id !== page.module);
-                    if (!show) this.navigation.hidden.push(page.module);
-                }));
+                for (const page of groupPages) {
+                    const index = pages.indexOf(page);
+                    const setting = new Setting(section).setName(t(page.label));
+                    setting.settingEl.addClass('nl-layout-page-row');
+                    setting.settingEl.dataset.module = page.module;
+                    setting.addButton(button => button.setIcon('arrow-up').setTooltip(t('Move up')).setDisabled(index === 0).onClick(() => {
+                        const previous = pages[index - 1];
+                        if (!previous) return;
+                        const a = order.indexOf(page.module), b = order.indexOf(previous.module);
+                        [order[a], order[b]] = [order[b], order[a]];
+                        this.navigation.order = order;
+                        renderLayout();
+                    }));
+                    setting.addButton(button => button.setIcon('arrow-down').setTooltip(t('Move down')).setDisabled(index === pages.length - 1).onClick(() => {
+                        const next = pages[index + 1];
+                        if (!next) return;
+                        const a = order.indexOf(page.module), b = order.indexOf(next.module);
+                        [order[a], order[b]] = [order[b], order[a]];
+                        this.navigation.order = order;
+                        renderLayout();
+                    }));
+                    setting.addToggle(toggle => toggle.setValue(!this.navigation.hidden.includes(page.module)).setTooltip(t('Show in tab bar')).onChange(show => {
+                        this.navigation.hidden = this.navigation.hidden.filter(id => id !== page.module);
+                        if (!show) this.navigation.hidden.push(page.module);
+                    }));
+                }
             }
         };
         renderLayout();

@@ -1,5 +1,11 @@
 # NarrativeLab — Changelog
 
+## 1.7.5
+
+- Project settings now present tab-layout groups as consistent framed cards. Multi-page groups use a single group heading, while single-page groups avoid duplicate labels; spacing, controls, and scrolling follow one visual system.
+- Starting WritingLab with no detected projects no longer opens the new-project wizard automatically. Project creation remains available through the ribbon, command palette, and project selector.
+- Added regression coverage for the tab-layout presentation and empty-project startup behavior.
+
 ## 1.7.4
 
 - Every folder in the tracking list records edits independently while the plugin is running, even when its statistics are not selected or the sidebar is closed. All listed scopes resume after workspace startup.

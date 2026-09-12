@@ -135,6 +135,33 @@ test('automatic and manual navigator opening share one leaf and never await layo
     assert.equal(revealed, 1);
 });
 
+test('an empty project scan never opens the new-project wizard automatically', async () => {
+    const source = await readFile(new URL('../main.ts', import.meta.url), 'utf8');
+    const start = source.indexOf('    private async bootstrapProjects()');
+    const method = source.slice(start, source.indexOf('    /**', start + 8));
+    let wizardOpens = 0;
+    let viewActivations = 0;
+    const sandbox = vm.createContext({
+        sceneManager: { scanProjects: async () => [] },
+        window: { setTimeout: callback => { callback(); return 1; } },
+    });
+    const compiled = await esbuild.transform(`class Probe {
+        sceneManager = sceneManager;
+        settings = {activeProjectFile: ''};
+        app = {vault: {adapter: {exists: async () => false}}};
+        openNewProjectModal() { wizardOpens++; }
+        activateView() { viewActivations++; }
+        ${method}
+    }; globalThis.Probe = Probe;`, { loader: 'ts', target: 'es2020' });
+    sandbox.wizardOpens = wizardOpens;
+    sandbox.viewActivations = viewActivations;
+    vm.runInContext(compiled.code, sandbox);
+    await new sandbox.Probe().bootstrapProjects();
+    assert.equal(sandbox.wizardOpens, 0);
+    assert.equal(sandbox.viewActivations, 0);
+    assert.doesNotMatch(method, /openNewProjectModal\(/);
+});
+
 function element(parentElement = null) {
     return { nodeType: 1, parentElement, isConnected: true };
 }

@@ -225,6 +225,9 @@ try {
     await page.getByRole('tab',{name:'页签布局',exact:true}).click();
     assert.ok(await page.getByText('分组只整理入口，各功能仍可独立开关。',{exact:true}).isVisible());
     assert.ok(await page.locator('.nl-layout-group-heading').filter({hasText:'整理'}).isVisible());
+    assert.equal(await page.locator('.nl-layout-group').count(),6);
+    for (const label of ['文稿','信息表','资料库','演示']) assert.equal(await page.locator('[role="tabpanel"]:not([hidden])').getByText(label,{exact:true}).count(),1);
+    assert.equal(await page.locator('.nl-layout-group.is-single').count(),4);
     assert.equal(await page.locator('[role="tabpanel"]:not([hidden])').getByText('章节模板',{exact:true}).count(),0);
     assert.ok(await page.getByText('项目默认页面',{exact:true}).isVisible());
     await page.getByRole('tab',{name:'页签布局',exact:true}).press('ArrowRight');

@@ -149,6 +149,7 @@ test('failed manifest save restores suspended leaves', async () => {
 
 test('creation and settings share the grouped picker; writing counters are the final two rows', async () => {
     const picker = await readFile('components/ProjectModulePicker.ts', 'utf8');
+    const modal = await readFile('components/ProjectModulesModal.ts', 'utf8');
     assert.match(picker, /Narrative planning'[\s\S]*?Narrative content'[\s\S]*?Materials and research'/);
     assert.match(picker, /modules: \['scenes', 'sceneDetails', 'sceneNotes', 'synopsis', 'series'\]/);
     assert.match(picker, /nl-library-pack-choices/);
@@ -175,6 +176,11 @@ test('creation and settings share the grouped picker; writing counters are the f
     assert.match(styles, /\.nl-module-grid \{[\s\S]*?grid-template-columns:\s*repeat\(2,/);
     assert.doesNotMatch(styles, /\.nl-module-grid > \.setting-item:last-child:nth-child\(odd\)/);
     assert.doesNotMatch(styles, /\.nl-module-group-tracking \.nl-module-grid \{[^}]*grid-template-columns:\s*1fr/);
+    assert.match(modal, /sortTabGroups\(\[\.\.\.PROJECT_TAB_GROUPS\], order\)/);
+    assert.match(modal, /groupPages\.length === 1 \? ' is-single'/);
+    assert.match(modal, /if \(groupPages\.length > 1\)/);
+    assert.match(styles, /\.nl-project-settings-modal \.nl-layout-group \{[^}]*border:[^;]+;[^}]*border-radius:/s);
+    assert.match(styles, /\.nl-layout-group\.is-single > \.setting-item\.nl-layout-page-row \{ border-top: 0; \}/);
 });
 
 test('tab strip insert index splits at each tab midpoint', () => {

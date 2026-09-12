@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-floating-promises, @typescript-eslint/no-misused-promises, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/no-unused-vars, no-useless-escape -- Obsidian's API surface and several untyped third-party libraries force dynamic dispatch; floating promises are intentional in DOM/event handlers; matching enable at end of file */
-import { AbstractInputSuggest, App, ButtonComponent, DropdownComponent, FileView, FuzzySuggestModal, ItemView, Modal, Notice, Platform, Plugin, Setting, TFile, TFolder, TextComponent, ToggleComponent, WorkspaceLeaf, normalizePath, parseYaml, setIcon, stringifyYaml } from 'obsidian';
+import { AbstractInputSuggest, App, ButtonComponent, DropdownComponent, FileView, FuzzySuggestModal, ItemView, Modal, Notice, Plugin, Setting, TFile, TFolder, TextComponent, ToggleComponent, WorkspaceLeaf, normalizePath, parseYaml, setIcon, stringifyYaml } from 'obsidian';
 import { SceneCardsSettings, SceneCardsSettingTab, DEFAULT_SETTINGS } from './settings';
 import { asRecord, isRecord } from './utils/narrow';
 import { addedMutationRoots, matchingElements } from './utils/mutationRoots';
@@ -7711,7 +7711,7 @@ export default class SceneCardsPlugin extends Plugin {
      * Scan for existing NarrativeLab projects.
      * If none are found, retry a few times in case the vault / metadata cache
      * hasn't finished indexing (common on mobile and after laptop wake).
-     * Only prompt for a new project if retries are exhausted.
+     * An empty result is a valid state; project creation is always user-initiated.
      */
     private async bootstrapProjects(): Promise<void> {
         let projects = await this.sceneManager.scanProjects();
@@ -7742,30 +7742,10 @@ export default class SceneCardsPlugin extends Plugin {
                 }
             }
 
-            // Mobile (iOS / iPadOS / Android) suppression: the vault file
-            // system on mobile can take a long time to populate, especially
-            // with iCloud / Dropbox / OneDrive sync. Auto-opening the New
-            // Project modal in that window leads to users seeing the dialog
-            // before their existing projects have shown up, and accidentally
-            // creating duplicates. Show a one-time notice instead and let
-            // the user invoke the modal manually from the command palette
-            // ("NarrativeLab: Create new project") once everything has loaded.
-            if (Platform.isMobile) {
-                new Notice(
-                    t('NarrativeLab: no projects found yet. If sync is still running, give it a moment. Otherwise use the command palette → "NarrativeLab: Create new project".'),
-                    8000,
-                );
-                return;
-            }
-
-            // Desktop: prompt the user to name their first project instead
-            // of auto-creating a "Default" one.
-            const project = await this.openNewProjectModal();
-            if (project) {
-                try {
-                    await this.activateView(this.resolveDefaultProjectViewType());
-                } catch { /* non-critical: user can navigate manually */ }
-            }
+            // Do not interrupt startup or turn a delayed sync scan into an
+            // accidental project. The ribbon and command palette keep the
+            // explicit New Project action available on every platform.
+            return;
         }
     }
 
