@@ -5,6 +5,10 @@ import { t } from '../utils/i18n';
 import { isProjectScopedLibraryArtifact, isUntrackedLibraryNoise, vaultRelativeFolderPath } from '../utils/vaultFolders';
 import type { ProjectCapabilities } from '../models/ProjectCapabilities';
 import { libraryCategoryPack, usesNarrativeLibraryCategories } from '../models/ProjectCapabilities';
+import {
+    isDiscoverableSeriesMetadataPath,
+    mergeDiscoveredSeriesBookOrder,
+} from '../utils/seriesDiscovery';
 
 interface LibraryTransferJournal {
     movedFiles: Array<{ from: string; to: string }>;
@@ -762,26 +766,55 @@ export class SeriesManager {
     async discoverSeries(): Promise<Array<{ folder: string; meta: SeriesMetadata }>> {
         const adapter = this.app.vault.adapter;
         const results: Array<{ folder: string; meta: SeriesMetadata }> = [];
+        const seen = new Set<string>();
+        const configDir = normalizePath(this.app.vault.configDir);
 
+        const addSeries = async (folder: string): Promise<void> => {
+            const normalizedFolder = normalizePath(folder);
+            if (seen.has(normalizedFolder)) return;
+            const meta = await this.loadSeriesMetadata(normalizedFolder);
+            if (!meta) return;
+            seen.add(normalizedFolder);
+            const bookOrder = mergeDiscoveredSeriesBookOrder(
+                normalizedFolder,
+                meta.bookOrder,
+                this.plugin.sceneManager.getProjects(),
+            );
+            results.push({
+                folder: normalizedFolder,
+                meta: { ...meta, bookOrder },
+            });
+        };
+
+        // The vault index avoids a recursive cloud-drive walk and permits
+        // series below user folders named Archived, Notes, Library, and so on.
+        const indexedMetadata = this.app.vault.getFiles()
+            .filter(file => isDiscoverableSeriesMetadataPath(file.path, configDir));
+        for (const file of indexedMetadata) {
+            const slash = file.path.lastIndexOf('/');
+            await addSeries(slash >= 0 ? file.path.slice(0, slash) : '');
+        }
+
+        // Before Obsidian has indexed any series marker, retain a disk fallback.
+        // Stop descending once a series root is found; its child folders are
+        // projects, not places where another live series should be inferred.
         const scan = async (folder: string): Promise<void> => {
             const listing = await adapter.list(folder);
-            if (listing.files.some(path => path.endsWith('/series.json') || path === 'series.json')) {
-                const meta = await this.loadSeriesMetadata(folder);
-                if (meta) results.push({ folder, meta });
+            if (listing.files.some(path => isDiscoverableSeriesMetadataPath(path, configDir))) {
+                await addSeries(folder);
+                return;
             }
             for (const subfolder of listing.folders) {
                 const name = subfolder.split('/').pop() ?? '';
-                // Hidden/system folders (especially Obsidian's `.trash`) are
-                // not live series sources and may contain deleted series.json files.
-                if (!name.startsWith('.')
-                    && !['Library', 'Codex', 'Scenes', 'Theses', 'System', 'Attachments', 'NCanvas', 'Canvas', 'Bases', 'Notes', 'Research', 'Archived', 'Archive'].includes(name)) {
-                    await scan(normalizePath(subfolder));
-                }
+                if (name.startsWith('.')) continue;
+                await scan(normalizePath(subfolder));
             }
         };
-        try { await scan(''); } catch { /* vault may still be indexing */ }
+        if (indexedMetadata.length === 0) {
+            try { await scan(''); } catch { /* vault may still be indexing */ }
+        }
 
-        return results;
+        return results.sort((a, b) => a.folder.localeCompare(b.folder));
     }
 
     // ── Pre-flight ─────────────────────────────────────

@@ -92,8 +92,13 @@ export function shouldHideFileExplorerFile(
     managedProjectRootPaths: ReadonlySet<string> = new Set(),
 ): boolean {
     const normalizedPath = normalizeFileExplorerVisibilityPath(path);
-    if (pathBasename(path) === 'series.json'
-        && managedSeriesMetadataPaths.has(normalizedPath)) {
+    const isManagedSeriesMetadata = [...managedSeriesMetadataPaths].some(metadataPath => {
+        const normalizedMetadata = normalizeFileExplorerVisibilityPath(metadataPath);
+        return normalizedPath === normalizedMetadata
+            || normalizedPath === `${normalizedMetadata}.bak`
+            || normalizedPath === `${normalizedMetadata}.tmp`;
+    });
+    if (isManagedSeriesMetadata) {
         return rules.seriesMetadata;
     }
     const extension = fileExtension(path);

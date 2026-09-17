@@ -68,6 +68,9 @@ test('folder and file visibility rules can be enabled independently', () => {
 test('only registered series metadata is hidden when JSON has a registered view', () => {
     assert.equal(shouldHideFileExplorerFile('series.json', () => true, undefined, managedSeriesFiles), false);
     assert.equal(shouldHideFileExplorerFile('Series/SERIES.JSON', () => true, undefined, managedSeriesFiles), true);
+    assert.equal(shouldHideFileExplorerFile('Series/series.json.bak', () => false, undefined, managedSeriesFiles), true);
+    assert.equal(shouldHideFileExplorerFile('Series/series.json.tmp', () => false, undefined, managedSeriesFiles), true);
+    assert.equal(shouldHideFileExplorerFile('Notes/series.json.bak', () => false, undefined, managedSeriesFiles), false);
 });
 
 test('registered file types remain visible and unopenable types are hidden', () => {
