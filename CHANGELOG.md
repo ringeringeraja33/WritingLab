@@ -1,5 +1,11 @@
 # NarrativeLab — Changelog
 
+## 1.7.7
+
+- Series discovery now uses the Obsidian file index, so valid series remain available below user-created folders such as `Archived`, `Notes`, or `Library`.
+- Project management supplements stale `series.json` ordering with live direct-child projects, restoring moved projects such as Nachtlied without rewriting project documents or series metadata during discovery.
+- File Explorer hiding now treats `series.json.bak` and `series.json.tmp` as managed series metadata while leaving unrelated backup files visible.
+
 ## 1.7.6
 
 - Project discovery can recover an unambiguous root document whose project YAML header is missing when multiple NarrativeLab-owned System markers remain. Scanning preserves the document body and does not rewrite the source file.

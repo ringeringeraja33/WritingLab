@@ -15,7 +15,7 @@ function isWithin(path: string, root: string): boolean {
 }
 
 /** A live series marker may sit below any user-created folder name. */
-export function isDiscoverableSeriesMetadataPath(path: string, configDir = '.obsidian'): boolean {
+export function isDiscoverableSeriesMetadataPath(path: string, configDir: string): boolean {
     const normalized = normalize(path);
     if (!normalized || normalized.split('/').includes('.trash')) return false;
     const normalizedConfig = normalize(configDir);

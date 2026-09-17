@@ -14,11 +14,12 @@ const module = await import(
 );
 
 test('series metadata remains discoverable below user-named archive and library folders', () => {
-    assert.equal(module.isDiscoverableSeriesMetadataPath('Archived/项目设定集/series.json'), true);
-    assert.equal(module.isDiscoverableSeriesMetadataPath('Library/小说/series.json'), true);
-    assert.equal(module.isDiscoverableSeriesMetadataPath('.trash/旧系列/series.json'), false);
-    assert.equal(module.isDiscoverableSeriesMetadataPath('.obsidian/plugins/example/series.json'), false);
-    assert.equal(module.isDiscoverableSeriesMetadataPath('Archived/项目设定集/series.json.bak'), false);
+    const configDir = '.obsidian';
+    assert.equal(module.isDiscoverableSeriesMetadataPath('Archived/项目设定集/series.json', configDir), true);
+    assert.equal(module.isDiscoverableSeriesMetadataPath('Library/小说/series.json', configDir), true);
+    assert.equal(module.isDiscoverableSeriesMetadataPath('.trash/旧系列/series.json', configDir), false);
+    assert.equal(module.isDiscoverableSeriesMetadataPath('.obsidian/plugins/example/series.json', configDir), false);
+    assert.equal(module.isDiscoverableSeriesMetadataPath('Archived/项目设定集/series.json.bak', configDir), false);
 });
 
 test('live direct-child projects omitted from stale metadata remain visible', () => {
