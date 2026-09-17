@@ -24,6 +24,7 @@ const managedFolders = new Set([
     'series/library',
 ]);
 const managedSeriesFiles = new Set(['series/series.json']);
+const managedProjectRoots = new Set(['novel']);
 
 test('only registered project System folders are hidden', () => {
     assert.equal(shouldHideFileExplorerFolder('System', undefined, managedFolders), false);
@@ -60,8 +61,8 @@ test('folder and file visibility rules can be enabled independently', () => {
     assert.equal(shouldHideFileExplorerFolder('Novel/Library', rules, managedFolders), true);
     assert.equal(shouldHideFileExplorerFolder('Novel/Canvas', rules, managedFolders), false);
     assert.equal(shouldHideFileExplorerFile('Series/series.json', () => false, rules, managedSeriesFiles), false);
-    assert.equal(shouldHideFileExplorerFile('Novel/export.docx', () => false, rules), true);
-    assert.equal(shouldHideFileExplorerFile('Novel/chapter.md', () => true, rules), false);
+    assert.equal(shouldHideFileExplorerFile('Novel/export.docx', () => false, rules, managedSeriesFiles, managedProjectRoots), true);
+    assert.equal(shouldHideFileExplorerFile('Novel/chapter.md', () => true, rules, managedSeriesFiles, managedProjectRoots), false);
 });
 
 test('only registered series metadata is hidden when JSON has a registered view', () => {
@@ -70,9 +71,10 @@ test('only registered series metadata is hidden when JSON has a registered view'
 });
 
 test('registered file types remain visible and unopenable types are hidden', () => {
-    assert.equal(shouldHideFileExplorerFile('Novel/chapter.md', ext => ext === 'md'), false);
-    assert.equal(shouldHideFileExplorerFile('Novel/export.docx', ext => ext === 'md'), true);
-    assert.equal(shouldHideFileExplorerFile('Novel/no-extension', () => true), true);
+    assert.equal(shouldHideFileExplorerFile('Novel/chapter.md', ext => ext === 'md', undefined, undefined, managedProjectRoots), false);
+    assert.equal(shouldHideFileExplorerFile('Novel/export.docx', ext => ext === 'md', undefined, undefined, managedProjectRoots), true);
+    assert.equal(shouldHideFileExplorerFile('Novel/no-extension', () => true, undefined, undefined, managedProjectRoots), true);
+    assert.equal(shouldHideFileExplorerFile('Notes/outside.xlsx', () => false, undefined, undefined, managedProjectRoots), false);
 });
 
 test('NarrativeLab canvas formats remain visible in registry fallback mode', () => {

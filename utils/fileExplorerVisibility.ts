@@ -40,6 +40,8 @@ export interface FileExplorerVisibilityRules {
 }
 
 export interface FileExplorerVisibilityScope {
+    /** Project roots within which unsupported generated files may be hidden. */
+    projectRootPaths: ReadonlySet<string>;
     /** Exact vault-relative folders owned by a NarrativeLab project or series. */
     folderPaths: ReadonlySet<string>;
     /** Exact series.json files belonging to a validated NarrativeLab series. */
@@ -87,11 +89,19 @@ export function shouldHideFileExplorerFile(
         OBSIDIAN_OPENABLE_EXTENSION_FALLBACK.has(extension),
     rules: FileExplorerVisibilityRules = DEFAULT_FILE_EXPLORER_VISIBILITY_RULES,
     managedSeriesMetadataPaths: ReadonlySet<string> = new Set(),
+    managedProjectRootPaths: ReadonlySet<string> = new Set(),
 ): boolean {
+    const normalizedPath = normalizeFileExplorerVisibilityPath(path);
     if (pathBasename(path) === 'series.json'
-        && managedSeriesMetadataPaths.has(normalizeFileExplorerVisibilityPath(path))) {
+        && managedSeriesMetadataPaths.has(normalizedPath)) {
         return rules.seriesMetadata;
     }
     const extension = fileExtension(path);
-    return rules.unsupportedFiles && (!extension || !canOpenExtension(extension));
+    const belongsToProject = [...managedProjectRootPaths].some(root => {
+        const normalizedRoot = normalizeFileExplorerVisibilityPath(root);
+        return normalizedRoot && (normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`));
+    });
+    return belongsToProject
+        && rules.unsupportedFiles
+        && (!extension || !canOpenExtension(extension));
 }

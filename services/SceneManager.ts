@@ -13,6 +13,7 @@ import { coerceString } from '../utils/narrow';
 import { ensureVaultFolder, registerDeletedProjectPathGuard, vaultRelativeFolderPath } from '../utils/vaultFolders';
 import { plotGridXlsxPath } from './PlotGridXlsxCodec';
 import { projectDocumentBasePath, renameProjectDocumentBase } from './ProjectDocumentBase';
+import { isRecoverableProjectManifestPath } from '../utils/projectBundleValidation';
 import {
     capabilitiesForPreset,
     normalizeProjectCapabilities,
@@ -622,6 +623,53 @@ export class SceneManager implements ISceneStore {
             if (isDiscardedPath(file.path)) continue;
             addProject(this.projectFromMetadataCache(file));
         }
+
+        // A user rename or external editor can leave the project document body
+        // in place while dropping its YAML header. Recover only when the root
+        // note is unambiguous and its sibling System folder contains multiple
+        // NarrativeLab-owned markers. This is detection-only: the source note
+        // is not rewritten during a scan.
+        const recoverableFiles = indexed.filter(file => {
+            if (next.has(file.path) || isDiscardedPath(file.path) || !file.parent) return false;
+            const system = this.app.vault.getAbstractFileByPath(
+                normalizePath(`${file.parent.path}/System`),
+            );
+            if (!(system instanceof TFolder)) return false;
+            return isRecoverableProjectManifestPath(file.path, [
+                ...file.parent.children.map(child => child.path),
+                ...system.children.map(child => child.path),
+            ]);
+        });
+        await mapPool(recoverableFiles, 4, async file => {
+            try {
+                const content = await adapter.read(file.path);
+                const parsed = this.parseProjectContent(content, file.path);
+                if (parsed) {
+                    addProject(parsed);
+                    return;
+                }
+                const seriesFolder = file.parent?.parent?.path ?? '';
+                const seriesMetadataPath = seriesFolder
+                    ? normalizePath(`${seriesFolder}/series.json`)
+                    : '';
+                let seriesId: string | undefined;
+                if (seriesMetadataPath
+                    && this.app.vault.getAbstractFileByPath(seriesMetadataPath) instanceof TFile) {
+                    seriesId = seriesFolder.split('/').pop() || undefined;
+                    try {
+                        const metadata = JSON.parse(await adapter.read(seriesMetadataPath)) as { name?: unknown };
+                        if (typeof metadata.name === 'string' && metadata.name.trim()) {
+                            seriesId = metadata.name.trim();
+                        }
+                    } catch { /* folder name remains a safe series identity */ }
+                }
+                addProject(this.projectFromFrontmatter({
+                    type: 'narrative-lab',
+                    title: file.basename,
+                    ...(seriesId ? { seriesId } : {}),
+                }, file.path, content.trim()));
+            } catch { /* unreadable recovery candidate — leave it untouched */ }
+        });
 
         // Disk fallback only for markdown that the metadata cache has not typed yet.
         const pendingReads: string[] = [];

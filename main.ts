@@ -2254,6 +2254,7 @@ export default class SceneCardsPlugin extends Plugin {
 
     /** Exact internal paths owned by registered projects and validated series. */
     private fileExplorerVisibilityScope(): FileExplorerVisibilityScope {
+        const projectRootPaths = new Set<string>();
         const folderPaths = new Set<string>();
         const seriesMetadataPaths = new Set<string>();
         const addFolder = (path: string): void => {
@@ -2262,6 +2263,8 @@ export default class SceneCardsPlugin extends Plugin {
         };
         for (const project of this.sceneManager?.getProjects() || []) {
             const folders = deriveProjectFoldersFromFilePath(project.filePath);
+            const projectRoot = normalizeFileExplorerVisibilityPath(folders.baseFolder);
+            if (projectRoot) projectRootPaths.add(projectRoot);
             addFolder(project.codexFolder || folders.codexFolder);
             addFolder(`${folders.baseFolder}/System`);
             addFolder(folders.canvasFolder);
@@ -2271,7 +2274,7 @@ export default class SceneCardsPlugin extends Plugin {
             if (this.app.vault.getAbstractFileByPath(sharedLibrary)) addFolder(sharedLibrary);
             seriesMetadataPaths.add(normalizeFileExplorerVisibilityPath(`${seriesFolder}/series.json`));
         }
-        return { folderPaths, seriesMetadataPaths };
+        return { projectRootPaths, folderPaths, seriesMetadataPaths };
     }
 
     /**
@@ -2311,6 +2314,7 @@ export default class SceneCardsPlugin extends Plugin {
                     extension => this.canObsidianOpenExtension(extension),
                     rules,
                     scope.seriesMetadataPaths,
+                    scope.projectRootPaths,
                 );
                 row.classList.toggle(hiddenClass, hidden);
             }

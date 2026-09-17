@@ -357,6 +357,7 @@ export const EXTRA_ZH: Record<string, string> = {
     'Hide series.json': '隐藏 series.json',
     'Hide NarrativeLab series metadata files from the Obsidian Files view.': '在 Obsidian 文件列表中隐藏 NarrativeLab 系列元数据文件。',
     'Hide files Obsidian cannot open': '隐藏 Obsidian 无法打开的文件',
+    'Inside registered NarrativeLab projects only, hide file types without a registered Obsidian view. Files elsewhere in the vault remain visible.': '仅在已识别的 NarrativeLab 项目内隐藏 Obsidian 无法打开的文件类型；库中其他位置的文件保持可见。',
     'Hide file types without a registered Obsidian view; registered plugin file types remain visible.': '隐藏没有注册 Obsidian 视图的文件类型；已由插件注册的文件类型仍会显示。',
     'Hides System folders, series.json, and file types that Obsidian has no view for. Files stay on disk and remain available to NarrativeLab.': '隐藏 System 文件夹、series.json，以及 Obsidian 无法直接打开的文件类型。文件仍保留在磁盘上，NarrativeLab 可继续正常使用。',
     'Hides Library and System folders, series.json, and file types that Obsidian has no view for. Files stay on disk and remain available to NarrativeLab. Use the ribbon eye button to show or hide them at any time.': '隐藏 Library、System 文件夹、series.json，以及 Obsidian 无法直接打开的文件类型。文件仍保留在磁盘上，NarrativeLab 可继续正常使用；可随时通过 Ribbon 上的眼睛按钮统一显示或隐藏。',

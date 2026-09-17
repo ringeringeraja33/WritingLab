@@ -1384,7 +1384,7 @@ export class SceneCardsSettingTab extends PluginSettingTab {
         addExplorerRule(
             'hideUnopenableFilesInExplorer',
             'Hide files Obsidian cannot open',
-            'Hide file types without a registered Obsidian view; registered plugin file types remain visible.',
+            'Inside registered NarrativeLab projects only, hide file types without a registered Obsidian view. Files elsewhere in the vault remain visible.',
         );
 
         new Setting(panel)

@@ -29,3 +29,18 @@ test('identifies both current and legacy root project manifests', () => {
     assert.equal(module.isRootProjectManifest('Scenes/Book.md', '---\ntype: narrative-lab\n---\n'), false);
     assert.equal(module.isRootProjectManifest('Note.md', '---\ntype: scene\n---\n'), false);
 });
+
+test('recovers only an unambiguous root note backed by multiple project markers', () => {
+    const paths = [
+        'Lab/Nachtlied/Nachtlied.md',
+        'Lab/Nachtlied/System/board.json',
+        'Lab/Nachtlied/System/timeline.json',
+        'Lab/Nachtlied/Library/datasheet-Nachtlied.xlsx',
+    ];
+    assert.equal(module.isRecoverableProjectManifestPath(paths[0], paths), true);
+    assert.equal(module.isRecoverableProjectManifestPath('Lab/Nachtlied/Other.md', [...paths, 'Lab/Nachtlied/Other.md']), false);
+    assert.equal(module.isRecoverableProjectManifestPath('Notes/System/Notes.md', [
+        'Notes/System/Notes.md',
+        'Notes/System/board.json',
+    ]), false);
+});
