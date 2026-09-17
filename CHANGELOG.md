@@ -1,5 +1,11 @@
 # NarrativeLab — Changelog
 
+## 1.7.6
+
+- Project discovery can recover an unambiguous root document whose project YAML header is missing when multiple NarrativeLab-owned System markers remain. Scanning preserves the document body and does not rewrite the source file.
+- The Files-view eye control now limits unsupported-file hiding to registered NarrativeLab project roots. XLSX and other unsupported files elsewhere in the vault remain visible.
+- Added regression coverage for guarded project recovery and project-scoped file visibility.
+
 ## 1.7.5
 
 - Project settings now present tab-layout groups as consistent framed cards. Multi-page groups use a single group heading, while single-page groups avoid duplicate labels; spacing, controls, and scrolling follow one visual system.

@@ -1,6 +1,6 @@
 {
   "name": "obsidian-writing-lab",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "description": "Plan, draft, and manage modular writing projects",
   "main": "main.js",
   "scripts": {
