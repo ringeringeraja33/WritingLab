@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "@univerjs/core": "^0.25.1",
-    "@univerjs/preset-sheets-conditional-formatting": "^0.25.1",
+    "@univerjs/preset-sheets-conditional-formatting": "^1.0.2",
     "@univerjs/preset-sheets-core": "^0.25.1",
     "@univerjs/preset-sheets-data-validation": "^0.25.1",
     "@univerjs/preset-sheets-drawing": "^0.25.1",
