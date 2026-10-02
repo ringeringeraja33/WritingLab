@@ -65,7 +65,7 @@
     "@univerjs/preset-sheets-sort": "^0.25.1",
     "@univerjs/preset-sheets-table": "^0.25.1",
     "@univerjs/preset-sheets-thread-comment": "^0.25.1",
-    "@univerjs/sheets-formula-ui": "^0.25.1",
+    "@univerjs/sheets-formula-ui": "^1.0.2",
     "@univerjs/sheets-ui": "^0.25.1",
     "@univerjs/ui": "^0.25.1",
     "exceljs": "^4.4.0",
