@@ -1,5 +1,10 @@
 # NarrativeLab — Changelog
 
+## 1.7.8
+
+- Document Bases, Library Bases, and spreadsheets stay in each project's own `Library/`, including series members. The series `Library/` holds shared material.
+- Named legacy files left in a series `Library/` or `Codex/` move back to the owning project when that feature is used. An existing local file is kept, and unnamed shared legacy files stay in place.
+
 ## 1.7.7
 
 - Series discovery now uses the Obsidian file index, so valid series remain available below user-created folders such as `Archived`, `Notes`, or `Library`.
