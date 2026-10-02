@@ -21,28 +21,20 @@ export function isUntrackedLibraryNoise(name: string): boolean {
         || n.startsWith('._') || n === 'icon\r';
 }
 
-/**
- * Per-project files that live under Library/ but are not shared series
- * material. datasheet.xlsx is that book's plot grid; library.base is the
- * Base view for that Library root. Merging them into another Library is
- * not a real content conflict.
- */
 /** Vault-relative parent for a new project. `/` and blanks are the vault root. */
 export function vaultRelativeFolderPath(path: string | null | undefined): string {
     return String(path ?? '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim();
 }
 
+/** Project Bases and spreadsheets remain local when shared material moves between Libraries. */
 export function isProjectScopedLibraryArtifact(name: string): boolean {
     const n = name.toLowerCase();
     return (
-        n === 'datasheet.xlsx'
-        || (n.startsWith('datasheet-') && n.endsWith('.xlsx'))
+        n.endsWith('.base')
+        || n.endsWith('.xlsx')
+        || n.endsWith('.sheet')
         || n === 'datasheet.nlmeta.json'
         || n.endsWith('.nlmeta.json')
-        || n === 'library.base'
-        || (n.startsWith('library-') && n.endsWith('.base'))
-        || n === '_narrativelab.base'
-        || n === '.narrative-lab.base'
         || n === 'corkboard.canvas'
         || (n.startsWith('corkboard-') && n.endsWith('.canvas'))
     );

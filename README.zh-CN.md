@@ -47,6 +47,7 @@ NarrativeLab 是用于规划、写作和维护叙事项目的 Obsidian 工作区
       项目名称.ncanvas
       项目名称.narrative.canvas
     Library/
+      writing-<projectName>.base
       library-<projectName>.base
       datasheet-<projectName>.xlsx
       Characters/
@@ -66,6 +67,8 @@ NarrativeLab 是用于规划、写作和维护叙事项目的 Obsidian 工作区
 ## 资料库同步原则
 
 项目文件夹是分类的来源。`Library/` 的直属子文件夹会成为分类页签；文件夹改名时分类和 Base 视图随之改名；确认删除文件夹后，对应分类也会移除。系列项目可同时显示系列共享资料与当前项目的本地资料，并通过完整路径边界防止其他项目的同名目录串入。
+
+每个项目的文稿 Base、资料库 Base 和 Sheet 均保存在该项目的 `Library/` 中。加入系列后，这些文件仍随项目保存；系列 `Library/` 用于共享资料。旧版误放在系列中的带项目名文件会在使用对应功能时迁回项目；目标存在同名文件时保留两份，不覆盖。无项目名的历史共享文件保留原位。
 
 ## 数据与隐私
 

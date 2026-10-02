@@ -56,12 +56,12 @@ A project can live anywhere in the vault. WritingLab discovers its Markdown mani
 Any folder/
   Project name/
     Project name.md       # type: narrative-lab
-    writing-<projectName>.base  # native document list when Scenes is disabled
     Canvas/
       corkboard-<projectName>.canvas
       Project name.ncanvas
       Project name.narrative.canvas  # optional native projection
     Library/
+      writing-<projectName>.base  # native document list when Scenes is disabled
       library-<projectName>.base
       datasheet-<projectName>.xlsx
       Characters/
@@ -77,6 +77,8 @@ Any folder/
 ```
 
 Legacy `type: storyline` manifests and `Codex/` folders remain readable. New projects use `type: narrative-lab` and `Library/`. WritingLab ignores Excalidraw Markdown drawings while indexing Library entities.
+
+Document Bases, Library Bases, and sheets belong to each project's own `Library/`, including series members. The series `Library/` contains shared material. Legacy project-named artifacts are relocated when their feature is used; existing destinations are never overwritten. Unnamed shared legacy files remain in place.
 
 ## Library behavior
 

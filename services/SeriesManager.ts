@@ -3,6 +3,8 @@ import type SceneCardsPlugin from '../main';
 import { SeriesMetadata, StoryLineProject, deriveProjectFoldersFromFilePath } from '../models/StoryLineProject';
 import { t } from '../utils/i18n';
 import { isProjectScopedLibraryArtifact, isUntrackedLibraryNoise, vaultRelativeFolderPath } from '../utils/vaultFolders';
+import { relocateProjectLibraryArtifact } from './ProjectLibraryArtifacts';
+import { projectDocumentBasePath } from './ProjectDocumentBase';
 import type { ProjectCapabilities } from '../models/ProjectCapabilities';
 import { libraryCategoryPack, usesNarrativeLibraryCategories } from '../models/ProjectCapabilities';
 import {
@@ -522,6 +524,7 @@ export class SeriesManager {
             : async () => undefined;
         let movedProject = false;
         try {
+            await this.restoreProjectLibraryArtifacts(project, seriesFolder);
             await this.ensureFolder(localCodexFolder);
             await this.copyFolderRecursive(seriesCodexFolder, localCodexFolder, copyJournal);
 
@@ -688,6 +691,19 @@ export class SeriesManager {
         const copyJournals = new Map<string, LibraryTransferJournal>();
         const movedProjects: typeof moves = [];
         try {
+            for (const move of moves) {
+                await this.restoreProjectLibraryArtifacts(move.project, folder);
+            }
+            // Do not trash unresolved legacy files (including conflicting
+            // versions) just because shared entity copies have succeeded.
+            const unresolvedArtifacts = (await Promise.all(['Library', 'Codex'].map(name =>
+                this.listProjectLibraryArtifacts(normalizePath(`${folder}/${name}`)),
+            ))).flat();
+            if (unresolvedArtifacts.length > 0) {
+                throw new Error(t('The series folder contains unmanaged files or folders: {items}. Move them elsewhere before dissolving the series.', {
+                    items: unresolvedArtifacts.join(', '),
+                }));
+            }
             for (const move of moves) {
                 const localLibrary = normalizePath(`${move.source}/Library`);
                 const journal = createLibraryTransferJournal();
@@ -1060,6 +1076,33 @@ export class SeriesManager {
             'Could not move the project because Windows is still using one of its files. Wait for autosave to finish, then close Excel or another external editor if the problem continues. Original error: {message}',
             { message },
         ));
+    }
+
+    /** Reclaim only project-named files before their owning project leaves the series. */
+    private async restoreProjectLibraryArtifacts(project: StoryLineProject, seriesFolder: string): Promise<void> {
+        const base = normalizePath(deriveProjectFoldersFromFilePath(project.filePath).baseFolder);
+        const safeName = (name: string): string => name.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim() || 'project';
+        const projectLeaf = safeName(project.filePath.split('/').pop()!.replace(/\.md$/i, ''));
+        const folderLeaf = safeName(base.split('/').pop()!);
+        const names = [
+            `library-${projectLeaf}.base`,
+            `datasheet-${folderLeaf}.xlsx`,
+            projectDocumentBasePath(project).split('/').pop()!,
+        ];
+        for (const folder of ['Library', 'Codex']) {
+            for (const name of names) {
+                await relocateProjectLibraryArtifact(this.app, `${seriesFolder}/${folder}/${name}`, `${base}/Library/${name}`);
+            }
+        }
+    }
+
+    private async listProjectLibraryArtifacts(folder: string): Promise<string[]> {
+        const adapter = this.app.vault.adapter;
+        if (!await adapter.exists(folder)) return [];
+        const listing = await adapter.list(folder);
+        const files = listing.files.filter(path => isProjectScopedLibraryArtifact(path.split('/').pop() ?? ''));
+        for (const child of listing.folders) files.push(...await this.listProjectLibraryArtifacts(child));
+        return files;
     }
 
     /** Prefer the current Library name while continuing to open legacy Codex folders. */

@@ -22,7 +22,10 @@ test('canonical Library Base lives under per-project Library/library-*.base', ()
     assert.match(storyLineProject, /LIBRARY_BASE_LEGACY_FILENAME = 'library\.base'/);
     assert.match(storyLineProject, /LEGACY_SYSTEM_LIBRARY_BASE = `System\/library\.base`/);
     assert.match(nativeLibraryBase, /\$\{libraryRoot\}\/\$\{LIBRARY_BASE_PREFIX\}-/);
-    assert.match(nativeLibraryBase, /getCodexFolder/);
+    const pathFunction = nativeLibraryBase.slice(nativeLibraryBase.indexOf('function getLibraryBasePath('), nativeLibraryBase.indexOf('async function relocateLegacyProjectLibraryBase('));
+    assert.match(pathFunction, /getProjectBaseFolder/);
+    assert.doesNotMatch(pathFunction, /getCodexFolder/);
+    assert.match(nativeLibraryBase, /await relocateLegacyProjectLibraryBase\(plugin, basePath\)/);
     assert.match(nativeLibraryBase, /narrativeLabLibraryBase/);
     assert.match(nativeLibraryBase, /narrativeLabCategoryId/);
 });

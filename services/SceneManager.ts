@@ -12,7 +12,8 @@ import { localizeForLanguage, t } from '../utils/i18n';
 import { coerceString } from '../utils/narrow';
 import { ensureVaultFolder, registerDeletedProjectPathGuard, vaultRelativeFolderPath } from '../utils/vaultFolders';
 import { plotGridXlsxPath } from './PlotGridXlsxCodec';
-import { projectDocumentBasePath, renameProjectDocumentBase } from './ProjectDocumentBase';
+import { projectDocumentBasePath, legacyProjectDocumentBasePaths, renameProjectDocumentBase } from './ProjectDocumentBase';
+import { relocateProjectLibraryArtifact } from './ProjectLibraryArtifacts';
 import { isRecoverableProjectManifestPath } from '../utils/projectBundleValidation';
 import {
     capabilitiesForPreset,
@@ -1153,16 +1154,16 @@ export class SceneManager implements ISceneStore {
         await rejectCollision(normalizePath(`${oldBaseFolder}/${safeName}.md`), oldFilePath);
         const plannedProject = { ...project, title: newTitle, filePath: newFilePath };
         const oldBasePath = projectDocumentBasePath(oldProject);
-        const legacyBasePath = normalizePath(`${oldBaseFolder}/writing.base`);
-        if (await adapter.exists(oldBasePath) || await adapter.exists(legacyBasePath)) {
-            const targetBase = normalizePath(`${oldBaseFolder}/${projectDocumentBasePath(plannedProject).split('/').pop()}`);
-            await rejectCollision(targetBase, oldBasePath);
+        const oldBaseCandidates = [oldBasePath, ...legacyProjectDocumentBasePaths(oldProject)];
+        for (const source of oldBaseCandidates) {
+            if (!await adapter.exists(source)) continue;
+            const targetBase = normalizePath(`${oldBaseFolder}/Library/${projectDocumentBasePath(plannedProject).split('/').pop()}`);
+            await rejectCollision(targetBase, source);
         }
 
         const renamedFiles = {
             [oldFilePath]: newFilePath,
-            [oldBasePath]: projectDocumentBasePath(plannedProject),
-            [legacyBasePath]: projectDocumentBasePath(plannedProject),
+            ...Object.fromEntries(oldBaseCandidates.map(path => [path, projectDocumentBasePath(plannedProject)])),
         };
         const resumeLeaves = await this.plugin.quiesceProjectLeavesForFolderMove(oldBaseFolder, newBaseFolder, renamedFiles);
         this.managedProjectRenameRoots.add(oldBaseFolder);
@@ -1241,7 +1242,6 @@ export class SceneManager implements ISceneStore {
 
         // Rename per-project datasheet / library base files after the folder move.
         try {
-            const adapter = this.app.vault.adapter;
             const oldLeaf = oldBaseFolder.split('/').pop() ?? '';
             const newLeaf = safeName;
 
@@ -1256,30 +1256,28 @@ export class SceneManager implements ISceneStore {
             // datasheet rename (file name changes with project name)
             const movedOldPlot = normalizePath(plotGridXlsxPath(newBaseFolder, oldLeaf));
             const movedNewPlot = normalizePath(plotGridXlsxPath(newBaseFolder, newLeaf));
-            if (await adapter.exists(movedOldPlot) && !await adapter.exists(movedNewPlot)) {
-                await adapter.rename(movedOldPlot, movedNewPlot);
-            }
+            await relocateProjectLibraryArtifact(this.app, movedOldPlot, movedNewPlot);
 
-            // library base rename (series codex keeps it in parent folder)
-            const seriesFolder = this.getSeriesFolderForProject(project);
-            const libraryRoot = seriesFolder
-                ? (() => {
-                    const library = normalizePath(`${seriesFolder}/Library`);
-                    const legacyCodex = normalizePath(`${seriesFolder}/Codex`);
-                    if (this.app.vault.getAbstractFileByPath(library)) return library;
-                    if (this.app.vault.getAbstractFileByPath(legacyCodex)) return legacyCodex;
-                    return library;
-                })()
-                : normalizePath(`${newBaseFolder}/Library`);
+            // A project's view configuration always travels with its own Library.
+            const libraryRoot = normalizePath(`${newBaseFolder}/Library`);
+            const oldLibraryLeaf = oldFilePath.split('/').pop()!.replace(/\.md$/i, '');
 
             const movedOldBase = normalizePath(
-                `${libraryRoot}/${LIBRARY_BASE_PREFIX}-${sanitizeArtifactName(oldLeaf)}.base`,
+                `${libraryRoot}/${LIBRARY_BASE_PREFIX}-${sanitizeArtifactName(oldLibraryLeaf)}.base`,
             );
             const movedNewBase = normalizePath(
                 `${libraryRoot}/${LIBRARY_BASE_PREFIX}-${sanitizeArtifactName(newLeaf)}.base`,
             );
-            if (await adapter.exists(movedOldBase) && !await adapter.exists(movedNewBase)) {
-                await adapter.rename(movedOldBase, movedNewBase);
+            await relocateProjectLibraryArtifact(this.app, movedOldBase, movedNewBase);
+            // Also reclaim a named legacy artifact when an unopened series
+            // member is renamed before its first local-Library migration.
+            if (originalSeriesFolder) {
+                const oldBaseName = `${LIBRARY_BASE_PREFIX}-${sanitizeArtifactName(oldLibraryLeaf)}.base`;
+                for (const folder of ['Library', 'Codex']) {
+                    const root = `${originalSeriesFolder}/${folder}`;
+                    await relocateProjectLibraryArtifact(this.app, `${root}/${movedOldPlot.split('/').pop()}`, movedNewPlot);
+                    await relocateProjectLibraryArtifact(this.app, `${root}/${oldBaseName}`, movedNewBase);
+                }
             }
         } catch (err) {
             console.warn('[NarrativeLab] datasheet/library.base rename skipped:', err);

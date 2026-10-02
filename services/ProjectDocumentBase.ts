@@ -2,6 +2,7 @@ import { normalizePath, TFile, type App } from 'obsidian';
 import type { StoryLineProject } from '../models/StoryLineProject';
 import { deriveProjectFoldersFromFilePath } from '../models/StoryLineProject';
 import { t } from '../utils/i18n';
+import { ensureVaultFolder } from '../utils/vaultFolders';
 
 const LEGACY_DOCUMENT_BASE_FILENAME = 'writing.base';
 const EXCLUDED_FOLDERS = ['System', 'Library', 'Canvas', 'Attachments', 'Research', 'Notes', 'Scenes', 'Theses'];
@@ -15,7 +16,13 @@ export function projectDocumentBasePath(project: StoryLineProject): string {
     const safeProjectName = project.title.trim()
         .replace(/[\\/:*?"<>|]/g, '-')
         .replace(/[. ]+$/g, '') || 'Project';
-    return normalizePath([baseFolder, `writing-${safeProjectName}.base`].filter(Boolean).join('/'));
+    return normalizePath([baseFolder, 'Library', `writing-${safeProjectName}.base`].filter(Boolean).join('/'));
+}
+
+export function legacyProjectDocumentBasePaths(project: StoryLineProject): string[] {
+    const baseFolder = deriveProjectFoldersFromFilePath(project.filePath).baseFolder;
+    const name = projectDocumentBasePath(project).split('/').pop()!;
+    return [normalizePath(`${baseFolder}/${name}`), legacyProjectDocumentBasePath(project)];
 }
 
 function legacyProjectDocumentBasePath(project: StoryLineProject): string {
@@ -51,7 +58,10 @@ export async function ensureProjectDocumentBase(app: App, project: StoryLineProj
     const existing = app.vault.getAbstractFileByPath(path);
     if (existing instanceof TFile) return existing;
     if (existing) throw new Error(`Cannot create document Base over a folder: ${path}`);
-    const legacy = app.vault.getAbstractFileByPath(legacyProjectDocumentBasePath(project));
+    await ensureVaultFolder(app, path.slice(0, path.lastIndexOf('/')));
+    const legacy = legacyProjectDocumentBasePaths(project)
+        .map(candidate => app.vault.getAbstractFileByPath(candidate))
+        .find((file): file is TFile => file instanceof TFile);
     if (legacy instanceof TFile) {
         await app.fileManager.renameFile(legacy, path);
         return legacy;
@@ -79,7 +89,11 @@ export async function renameProjectDocumentBase(app: App, oldProject: StoryLineP
     const oldName = projectDocumentBasePath(oldProject).split('/').pop()!;
     const newRoot = deriveProjectFoldersFromFilePath(project.filePath).baseFolder;
     const destination = projectDocumentBasePath(project);
-    const candidates = [normalizePath(`${newRoot}/${oldName}`), legacyProjectDocumentBasePath(project)];
+    const candidates = [
+        normalizePath(`${newRoot}/Library/${oldName}`),
+        normalizePath(`${newRoot}/${oldName}`),
+        legacyProjectDocumentBasePath(project),
+    ];
     const source = candidates.map(path => app.vault.getAbstractFileByPath(path))
         .find((file): file is TFile => file instanceof TFile);
     if (!source) return;
@@ -87,6 +101,7 @@ export async function renameProjectDocumentBase(app: App, oldProject: StoryLineP
         if (await app.vault.adapter.exists(destination)) {
             throw new Error(t('Cannot rename project because this path already exists: {path}', { path: destination }));
         }
+        await ensureVaultFolder(app, destination.slice(0, destination.lastIndexOf('/')));
         await app.fileManager.renameFile(source, destination);
     }
     await app.vault.process(source, content => rebaseDocumentBasePaths(content, oldProject, project));

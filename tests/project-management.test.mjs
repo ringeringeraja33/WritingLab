@@ -11,7 +11,7 @@ const t = (key, args = {}) => key.replace(/\{(\w+)\}/g, (_, name) => String(args
 const normalizePath = value => String(value).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
 const bundled = await build({
     stdin: {
-        contents: `export * from './services/ProjectDocumentBase'; export { deriveProjectFoldersFromFilePath } from './models/StoryLineProject'; export { TFile } from 'obsidian';`,
+        contents: `export * from './services/ProjectDocumentBase'; export * from './services/ProjectLibraryArtifacts'; export { deriveProjectFoldersFromFilePath } from './models/StoryLineProject'; export { TFile } from 'obsidian';`,
         resolveDir: root, loader: 'ts',
     },
     bundle: true, write: false, format: 'esm',
@@ -172,6 +172,7 @@ function renameHarness({ title = '博客', filePath = 'Projects/博客/博客.md
         vault: {
             adapter: { exists: async path => files.has(path) },
             getAbstractFileByPath: path => files.get(path) ?? null,
+            createFolder: async path => addFolder(path),
             process: async (file, fn) => { file.content = fn(file.content); },
         },
         fileManager: { renameFile: async (file, destination) => {
@@ -202,9 +203,9 @@ function renameHarness({ title = '博客', filePath = 'Projects/博客/博客.md
             saveSeriesMetadata: async (folder, value) => calls.push(['saveSeries', folder, [...value.bookOrder]]),
         },
     };
-    const Manager = new Function('normalizePath', 'TFile', 'deriveProjectFoldersFromFilePath', 'projectDocumentBasePath', 'renameProjectDocumentBase', 'ensureVaultFolder', 'plotGridXlsxPath', 'LIBRARY_BASE_PREFIX', 't',
-        `${renamedClass.code}; return Manager;`)(normalizePath, TFile, folders, api.projectDocumentBasePath, api.renameProjectDocumentBase,
-        async (_, path) => { if (!files.has(path)) addFolder(path); }, (root, name) => `${root}/Table/datasheet-${name}.xlsx`, 'library', t);
+    const Manager = new Function('normalizePath', 'TFile', 'deriveProjectFoldersFromFilePath', 'projectDocumentBasePath', 'legacyProjectDocumentBasePaths', 'renameProjectDocumentBase', 'relocateProjectLibraryArtifact', 'ensureVaultFolder', 'plotGridXlsxPath', 'LIBRARY_BASE_PREFIX', 't',
+        `${renamedClass.code}; return Manager;`)(normalizePath, TFile, folders, api.projectDocumentBasePath, api.legacyProjectDocumentBasePaths, api.renameProjectDocumentBase, api.relocateProjectLibraryArtifact,
+        async (_, path) => { if (!files.has(path)) addFolder(path); }, (root, name) => `${root}/Library/datasheet-${name}.xlsx`, 'library', t);
     const manager = new Manager();
     Object.assign(manager, {
         app, plugin, projects: new Map([[filePath, project]]),
@@ -225,7 +226,7 @@ test('whole-project rename moves the folder, manifest and Base, preserving custo
     assert.equal(h.project.filePath, 'Projects/研究随笔/研究随笔.md');
     assert.equal(h.project.coverImage, 'Projects/研究随笔/Attachments/封面.png');
     assert.ok(!h.calls.some(call => call[0] === 'frontmatter' && call[1].includes('研究随笔/博客')));
-    const base = h.files.get('Projects/研究随笔/writing-研究随笔.base');
+    const base = h.files.get('Projects/研究随笔/Library/writing-研究随笔.base');
     assert.ok(base);
     assert.match(base.content, /file\.inFolder\("Projects\/研究随笔"\)/);
     assert.match(base.content, /file\.path != "Projects\/研究随笔\/研究随笔.md"/);
@@ -247,7 +248,7 @@ test('legacy writing.base is migrated during rename and path-prefix neighbours a
     const h = renameHarness();
     h.addFile('Projects/博客/writing.base', api.buildProjectDocumentBase(h.project) + 'other: "Projects/博客集/资料.md"\n');
     await h.manager.renameProject(h.project, '新名称');
-    assert.match(h.files.get('Projects/新名称/writing-新名称.base').content, /Projects\/博客集\/资料.md/);
+    assert.match(h.files.get('Projects/新名称/Library/writing-新名称.base').content, /Projects\/博客集\/资料.md/);
 });
 
 test('root-level and legacy sibling manifests are renamed into the correct folder', async () => {
@@ -261,7 +262,7 @@ test('root-level and legacy sibling manifests are renamed into the correct folde
 });
 
 test('folder, manifest and document Base conflicts abort before any move', async () => {
-    for (const collision of ['Projects/新名称', 'Projects/博客/新名称.md', 'Projects/博客/writing-新名称.base']) {
+    for (const collision of ['Projects/新名称', 'Projects/博客/新名称.md', 'Projects/博客/Library/writing-新名称.base']) {
         const h = renameHarness();
         h.addFile(api.projectDocumentBasePath(h.project), 'original base');
         h.addFile(collision, 'existing file');
@@ -284,6 +285,21 @@ test('renaming an inactive series member updates its own series', async () => {
     h.manager.getSeriesFolder = () => { throw new Error('Must not read active series'); };
     await h.manager.renameProject(h.project, '新名称');
     assert.deepEqual(h.calls.find(call => call[0] === 'saveSeries'), ['saveSeries', 'Projects/系列甲', ['新名称', 'Other']]);
+});
+
+test('series member rename keeps Bases and sheets in its own Library, including named legacy files', async () => {
+    for (const legacyShared of [false, true]) {
+        const h = renameHarness({ filePath: 'Projects/系列甲/博客/博客.md', seriesId: '系列甲' });
+        const source = legacyShared ? 'Projects/系列甲/Library' : 'Projects/系列甲/博客/Library';
+        h.addFile(`${source}/library-博客.base`, '我的视图配置');
+        h.addFile(`${source}/datasheet-博客.xlsx`, 'sheet bytes');
+        h.addFile('Projects/系列甲/Library/library-Other.base', 'other project');
+        await h.manager.renameProject(h.project, '新名称');
+        assert.equal(h.files.get('Projects/系列甲/新名称/Library/library-新名称.base').content, '我的视图配置');
+        assert.equal(h.files.get('Projects/系列甲/新名称/Library/datasheet-新名称.xlsx').content, 'sheet bytes');
+        assert.equal(h.files.get('Projects/系列甲/Library/library-Other.base').content, 'other project');
+        assert.ok(!h.files.has('Projects/系列甲/Library/library-新名称.base'));
+    }
 });
 
 test('failed manifest rename restores the original folder and resumes the original tabs', async () => {

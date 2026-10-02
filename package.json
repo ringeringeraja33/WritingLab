@@ -15,7 +15,8 @@
     "test:management": "node --test tests/project-management.test.mjs",
     "test:canvas-modules": "node --test tests/canvas-project-modules.test.mjs",
     "test:folder-tracker": "node --test tests/folder-writing-tracker.test.mjs",
-    "test": "npm run typecheck && npm run audit:i18n && npm run test:unit && npm run test:startup && npm run test:management && npm run test:canvas-modules && npm run test:folder-tracker && node scripts/check-release.mjs",
+    "test:project-artifacts": "node --test tests/project-library-artifacts.test.mjs",
+    "test": "npm run typecheck && npm run audit:i18n && npm run test:unit && npm run test:startup && npm run test:management && npm run test:canvas-modules && npm run test:folder-tracker && npm run test:project-artifacts && node scripts/check-release.mjs",
     "check": "npm test && npm run build",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
   },

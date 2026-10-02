@@ -24,6 +24,7 @@ import {
 import type SceneCardsPlugin from '../main';
 import { libraryCategoryPack, usesNarrativeLibraryCategories } from '../models/ProjectCapabilities';
 import { isExcalidrawFilePath } from '../services/EntityFileCache';
+import { relocateProjectLibraryArtifact } from '../services/ProjectLibraryArtifacts';
 import { getLibraryProfilePropertyOrder } from '../utils/libraryProfilePropertyOrder';
 import { attachTooltip } from './Tooltip';
 import {
@@ -178,16 +179,20 @@ function projectLeafNameFromProjectFilePath(projectFilePath: string): string {
     return sanitizeProjectArtifactName(projectFilePath.split('/').pop()?.replace(/\.md$/i, '') ?? '');
 }
 
-/** Canonical single Library Base: `{Library}/library-<projectName>.base`. */
+/** View configuration belongs to the project even when its rows include shared series material. */
 function getLibraryBasePath(plugin: SceneCardsPlugin): string | null {
-    const libraryRoot = plugin.sceneManager.getCodexFolder?.()
-        || (() => {
-            const baseFolder = getProjectBaseFolder(plugin);
-            return baseFolder ? `${baseFolder}/Library` : null;
-        })();
-    if (!libraryRoot) return null;
+    const baseFolder = getProjectBaseFolder(plugin);
+    if (!baseFolder) return null;
+    const libraryRoot = `${baseFolder}/Library`;
     const leaf = projectLeafNameFromProjectFilePath(plugin.sceneManager.activeProject?.filePath ?? '');
     return normalizePath(`${libraryRoot}/${LIBRARY_BASE_PREFIX}-${leaf}.base`);
+}
+
+async function relocateLegacyProjectLibraryBase(plugin: SceneCardsPlugin, basePath: string): Promise<void> {
+    const legacyRoot = plugin.sceneManager.getCodexFolder?.();
+    if (!legacyRoot) return;
+    const name = basePath.split('/').pop()!;
+    await relocateProjectLibraryArtifact(plugin.app, `${legacyRoot}/${name}`, basePath);
 }
 
 /** Legacy pre-rename Library Base: `{libraryRoot}/library.base` (series or project-wide). */
@@ -1538,6 +1543,7 @@ async function ensureConsolidatedLibraryBase(
     const basePath = getLibraryBasePath(plugin);
     if (!basePath) return null;
 
+    await relocateLegacyProjectLibraryBase(plugin, basePath);
     let config = await readBaseConfig(plugin, basePath);
     let dirty = false;
     if (!config) {

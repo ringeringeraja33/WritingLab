@@ -193,6 +193,7 @@ import {
     readLibraryProfileLayout,
 } from './utils/libraryProfileLayout';
 import { vaultRelativeFolderPath } from './utils/vaultFolders';
+import { relocateProjectLibraryArtifact } from './services/ProjectLibraryArtifacts';
 import { clearPendingStoryGraphWikilinks } from './components/LibraryModeBar';
 import { rebaseStoryGraphRelationPaths } from './utils/storyGraphRefs';
 import { QuickAddModal } from './components/QuickAddModal';
@@ -4814,6 +4815,16 @@ export default class SceneCardsPlugin extends Plugin {
             const adapter = this.app.vault.adapter;
             const canonical = normalizePath(plotGridXlsxPath(baseFolder));
             const legacyLibraryXlsx = normalizePath(legacyPlotGridXlsxPath(baseFolder));
+            const project = this.sceneManager.getProjects().find(p => normalizePath(p.filePath) === targetProjectFile);
+            const seriesFolder = this.sceneManager.getSeriesFolderForProject(project);
+            if (seriesFolder) {
+                // Only named, project-owned sheets can be reclaimed. A shared
+                // datasheet.xlsx has no reliable owner and is left untouched.
+                const name = canonical.split('/').pop()!;
+                for (const folder of ['Library', 'Codex']) {
+                    await relocateProjectLibraryArtifact(this.app, `${seriesFolder}/${folder}/${name}`, canonical);
+                }
+            }
             if (await adapter.exists(canonical)) {
                 // Do not delete legacy recovery copies until the canonical file
                 // has been decoded successfully by loadPlotGrid().
